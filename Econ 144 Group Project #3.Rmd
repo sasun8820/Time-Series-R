@@ -1,0 +1,181 @@
+---
+title: 'Econ 144 Group Project #3'
+author: "Jeonseo David Lee (UID: 604-788-672)"
+date: "2023-03-16"
+output:
+  pdf_document:
+    toc: yes
+    toc_depth: 2
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(ggplot2)
+library(forecast)
+library(vars)
+library(corrr)
+library(corrplot)
+library(car)
+library(AER)
+library(broom)
+library(PoEdata)
+library(leaps)
+library(tidyverse)
+library(caret)
+library(MASS)
+library(dynlm)
+library(rugarch)
+library(tseries)
+library(knitr)
+library(fpp3)
+library(knitr)
+library(fpp2)
+library(lubridate)
+library(tsibbledata)
+library(fpp2)
+library(tinytex)
+library(rmarkdown)
+# install.packages("tinytex")
+# tinytex::install_tinytex()
+# Sys.getenv('PATH')
+# tinytex::tinytex_root()
+# tinytex::tlmgr_path()
+
+```
+
+# I. (5%) Introduction (describe the data, provide some background on the topic, etc.). #
+
+I selected the energy price index as our dataset for this project since it is one of the most important macroeconomic concerns, accounting for the majority of the overall CPI. Considering it is also a natural resource that is vulnerable to many external changes, its price index has fluctuated throughout time and requires a more developed forecasting insight. I've retrived this dataset "Global Price of Energy Index" conducted by the International Monetary Fund from the Fred Economic Data website. The data ranges from 1992 through the most recent month of January in 2023, when I gathered it with a monthly frequency. Our initial assumption for the greatest decline shown in the year beginning in 2021 was attributable to the COVID case, in which the energy demand plunged significantly as a result of the closure of numerous facilities globally. The decline in energy usage and demand was indeed shown to be detrimental to the overall energy industry.
+
+# II. (80%) Results (answers and plots). #
+
+**a) Make a time plot of your data and describe the main features of the series ** 
+
+```{R}
+data = read.csv("energyprice.csv")
+enprice = ts(data[, 2], start=c(1992,01), end=c(2023,01), frequency=12)
+
+tsdisplay(enprice, main="Energy Price Index") # appears to be AR(2) model 
+auto.arima(enprice) # ARIMA(0,1,1)(0,0,2)[12] 
+decmp <- stl(enprice, s.window=7)
+autoplot(decmp, main = "Energy Price Index Decomposition")
+```
+
+**b) Fit each forecasting model using 5 years of testset cross-validation ** 
+
+```{R}
+train_ep <- window(enprice, end=c(2017,12))
+test_ep <- window(enprice, start=c(2018,1))
+h <- length(enprice) - length(train_ep)
+
+# i. ARIMA Model
+arima_ep = auto.arima(train_ep)
+arima_ep_fct <- forecast::forecast(auto.arima(train_ep, lambda=0, biasadj=TRUE),h=h)
+autoplot(arima_ep_fct, main="Arima Model Forecast", ylab="Test-set", xlab="Year")
+
+# ii. ETS Model
+ets_ep = ets(train_ep) 
+ets_ep_fct = forecast::forecast(ets_ep, h=h)
+autoplot(ets_ep_fct, main="ETS Model Forecast", ylab="Test-set", xlab="Year")
+
+# iii. Holt-Winters Model 
+hw_ep <- hw(train_ep, h=h)
+hw_ep_fct = forecast::forecast(hw_ep, h=h, seasonal=c("multiplicative"))
+autoplot(hw_ep_fct, main="Holt-Winters Model Forecast", ylab="Test-set", xlab="Year")
+
+# iii. NNETAR Model
+nnetar_ep <- nnetar(train_ep)
+nnetar_ep_fct = forecast::forecast(nnetar_ep, h=h)
+autoplot(nnetar_ep_fct, main="NNETAR Model Forecast", ylab="Test-set", xlab="Year")
+
+# iv. Prophet Model 
+# prophet requirements
+library(prophet)
+library(lubridate)
+
+prophet_data = data %>%
+   rename(ds = DATE, # Have to name our date variable "ds"
+          y = PNRGINDEXM)   # Have to name our time series "y"
+prophet_data[,1] =as.Date(prophet_data[,1])
+
+train_pro = prophet_data %>%
+   filter(ds < ymd("2018-01-01"))
+test_pro = prophet_data %>%
+   filter(ds>= ymd("2018-01-01"))
+
+m <- prophet::prophet(train_pro, weekly.seasonality=FALSE, daily=FALSE)
+future <- make_future_dataframe(m, periods = 60, freq="month",include_history = FALSE)
+prophet_fct <- predict(m, future)
+plot(m, prophet_fct, xlab="Year", ylab= "Test-set", title="Prophet Model Forecast")
+
+```
+
+**c) Combine the forecasting models and plot them all together** 
+
+I have combined the four models, with the exception of the Prophet model, which is more effective when dealing with data with higher-order frequencies. By merely looking at the graph, I can see that the combined model imposes a shape that is quite similar to that of the original data, leading us to anticipate that it would perform well.
+
+```{R}
+Combination <- (arima_ep_fct[["mean"]] + ets_ep_fct[["mean"]] +
+  hw_ep_fct[["mean"]] + nnetar_ep_fct[["mean"]])/4
+
+autoplot(enprice) +
+  autolayer(arima_ep_fct, series="ARIMA", PI=FALSE) +
+  autolayer(ets_ep_fct, series="ETS", PI=FALSE) +
+  autolayer(hw_ep_fct, series="Holt-Winters", PI=FALSE) +
+  autolayer(nnetar_ep_fct, series="NNETAR", PI=FALSE) +
+  autolayer(Combination, series="Combination") +
+  xlab("Year") + 
+  ggtitle("Energy Price Index")
+
+```
+
+**d) Compare the training/test statistics ** 
+
+I've chosen MAPE as the test statistic to verify the accuracy of the forecasting model, as they all operate within the same data scales that do not require normalization by RMSE or other statistics. According to its MAPE, the performance of the combined model is superior to that of the individual forecasting models of Holt-Winters, NNETAR, and Prophet. Nonetheless, its performance remains inferior to that of the ARIMA and ETS models. Thus, our best preferred model might be either ARIMA or ETS, since ARIMA has a lower RMSE value and ETS has a lower MAPE value than the other.
+
+```{R}
+# i. ARIMA Model # MAPE: 33.9679035
+forecast::accuracy(arima_ep_fct, enprice)["Test set", ]
+
+# ii. ETS Model # MAPE: 33.9431849
+forecast::accuracy(ets_ep_fct, enprice)["Test set", ]
+
+# iii. Holt-Winters Model # MAPE: 73.4497895
+forecast::accuracy(hw_ep_fct, enprice)["Test set", ]
+
+# iv. NNETAR Model # MAPE: 54.5987665
+forecast::accuracy(nnetar_ep_fct, enprice)["Test set", ]
+
+# V. Prophet Model # MAPE: 54.83461
+forecast::accuracy(prophet_fct$yhat, enprice[313:372])["Test set", ]
+
+# VI. Combined Model # MAPE: 44.6490163
+forecast::accuracy(Combination, enprice)["Test set", ]
+
+```
+
+**e) Does the best model pass the residual tests?**
+
+Checking the residual test of our two best model candidates reveals that the ARIMA forecasting model passes the residual test without any significant (even seasonal) spikes in lags and also passes the Ljung-Box test with even the 1% of significant level (while the ETS model fails the Ljung-Box test at 1% but only at the 5% level). Thus, based on all of the analytic results, I could infer that the ARIMA forecasting model for our Energy Price Index dataset is the most accurate.
+
+```{R}
+checkresiduals(arima_ep_fct) # Best Model
+checkresiduals(ets_ep_fct)
+```
+
+# III. (5%) Conclusions and Future Work. #
+
+I have tested the various forecasting models, including ARIMA, ETS, Holt-Winters, NNETAR, Prophet, and the combined model, implementing each of their cross-validation settings with test data from the five most recent years (2018 Jan to 2023 Jan). From these multiple steps, I've determined that the best model for the energy price index data is the ARIMA model with the lowest RMSE value and residuals test results indicating no autocorrelation. As mentioned from the beginning, the energy price index has experienced varying fluctuations over time, but an overall upward trend. The considerable decline that was observed throughout the year 2021 seems to be attributable to COVID, which resulted in a precipitous decline in energy consumption as numerous facilities were forced to close due to their inability to maintain their previous energy demands. Then, once the relevant chaos has been socially resolved, the energy demand reaches its apex at the beginning of 2022, and then appears to decline again until the present. Yet, according to our most accurate ARIMA model, there will likely be a slight increase in the price of energy at least within the next two years.
+
+```{R} 
+# Future 2-years forecast from the ARIMA (best) model 
+best = auto.arima(enprice)
+best_fct = forecast::forecast(auto.arima(enprice, lambda=0, biasadj=TRUE), h=24)
+autoplot(best_fct)
+```
+
+# IV. (5%) References (include the source of your data and any other resources). #
+
+International Monetary Fund, Global price of Energy index [PNRGINDEXM], retrieved from FRED, Federal Reserve Bank of St. Louis; https://fred.stlouisfed.org/series/PNRGINDEXM, March 8, 2023.

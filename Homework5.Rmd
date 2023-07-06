@@ -1,0 +1,268 @@
+---
+title: 'Econ 144 HW #5'
+author: "Jeonseo David Lee (UID: 604-788-672)"
+date: "2023-03-10"
+output:
+  pdf_document:
+    toc: yes
+    toc_depth: 2
+  word_document:
+    toc: yes
+    toc_depth: '2'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(ggplot2)
+library(forecast)
+library(vars)
+library(corrr)
+library(corrplot)
+library(car)
+library(AER)
+library(broom)
+library(PoEdata)
+library(leaps)
+library(tidyverse)
+library(caret)
+library(MASS)
+library(dynlm)
+library(rugarch)
+library(tseries)
+library(knitr)
+library(fpp3)
+library(knitr)
+library(fpp2)
+library(lubridate)
+library(tsibbledata)
+library(fpp2)
+```
+
+## 1. Problem 14.3 (i.e., Chapter 14, Problem 3) from Textbook a. ##
+
+**Update the time series of the SP500 index in Section 14.1 and comment on the volatility of recent times compared to that of past times. Compute the autocorrelation functions of returns and squared returns. Find the best ARCH process to model the volatility of the index. Could you find an equivalent more parsimonious GARCH process?**
+
+As demonstrated by section 14.1's ARCH(1) model in which alpha equals 0.45, the volatility of the new ARCH(1) model's recent period data reaches approximately 0.6, indicating a slight increase in volatility. Using the ARCH(2) model, however, our loglikelihood seems to increase more, indicating that it's a better model than the ARCH(1) model, and all of the parameters, including alpha1, alpha2, omega, and ma1, appear to be more statistically significant than with the ARCH(1) model; therefore, the best ARCH process could be ARCH(2). And the Garch model that corresponds to ARCH(2) has fewer parameters due to the parsimony rule, resulting in GARCH(1,1) with the similar loglikelihood value.
+
+```{R}
+data = read.csv("SP500.csv")
+sp500.data = ts(data[, 2], start=c(2013,3), end=c(2023,3), frequency=52)
+N = length(sp500.data)
+sp500=as.data.frame(sp500.data)
+
+# Returns 
+sp500.returns=100*(log(sp500[2:N,])-log(sp500[1:(N-1),]))
+# Square Returns 
+sp500.sqreturns = sp500.returns^2
+
+plot(sp500, main="Original SP500")
+plot(sp500.returns, main="SP500 Returns")
+plot(sp500.sqreturns, main="SP500 Squared Returns")
+
+# Find the best ARCH model 
+# ARCH(1)
+spec = ugarchspec(variance.model=list(garchOrder=c(1,0)),
+mean.model=list(armaOrder=c(0,1)),distribution.model="norm")
+# Fit ARCH Model
+sp500.arch = ugarchfit(data=sp500.returns,spec=spec)
+# Fitted model outcome
+sp500.arch # LogLikelihood : -1012.221 
+
+# ARCH(2)
+spec = ugarchspec(variance.model=list(garchOrder=c(2,0)),
+mean.model=list(armaOrder=c(0,1)),distribution.model="norm")
+# Fit ARCH Model
+sp500.arch = ugarchfit(data=sp500.returns,spec=spec)
+# Fitted model outcome
+sp500.arch # LogLikelihood : -969.0186 
+
+?confusionMatrix
+
+# Find the equivalent GARCH model 
+spec2 = ugarchspec(variance.model=list(model="sGARCH",garchOrder=c(1,1)),
+mean.model=list(armaOrder=c(0,0)),distribution.model="norm")
+
+#Fit GARCH Model
+sp500.garch = ugarchfit(data=sp500.returns,spec=spec2)
+#fitted model outcome
+sp500.garch # LogLikelihood : -971.3236 
+
+```
+
+## 2. Problem 14.4 (i.e., Chapter 14, Problem 4) from Textbook a. ##
+
+**Based on your findings from Exercise 3, calculate the one and two-step ahead volatility forecasts. Construct a 95% interval forecast for the SP500 returns. Assume that the returns are conditionally normal distributed.**
+
+```{R}
+# 1~2-steps Forecast
+fcst = ugarchforecast(sp500.arch, data=sp500.returns, n.ahead=2, n.roll=0, out.sample=0)
+fcst # -0.53, 0.22
+#plot(fcst)
+
+# 95% Confidence Interval for the 2-steps forecast
+mu <- fitted(fcst) 
+sig <- sigma(fcst) 
+CI = cbind(mu-1.96*sig, mu+1.96*sig)
+CI
+```
+
+## 3. Problem 14.5 (i.e., Chapter 14, Problem 5) from Textbook a. ##
+
+**In Exercise 5 of Chapter 13, you downloaded the time series of US CPI and GDP and constructed the inflation rate and GDP growth. For each, calculate the unconditional means, and compute the 1-step-ahead volatility forecast by implementing the best (G)ARCH model, and construct the corresponding 95% interval forecast**
+
+Using auto.arima has allowed me to observe that the inflation rate follows the AR(1) process, while GDP growth follows the MA(1) model. The unconditional mean of the MA(1) process is equal to the mean value, which is 0.4853. In contrast, the unconditional mean of the AR(1) process has a form of c/(1-theta), which is equal to 1.022018 (0.622/(1-0.3914)). Both models are implemented with the ARCH(1) model and produce excellent results, with all of their parameters being statistically significant and their standard residuals passing the Ljung-Box test, which states that the residuals are now white noise, indicating that the ARCH(1) model was correctly applied. The 1-step forecast for inflation rate estimate was 0.668% with a 95% confidence interval of [-0.2087722, 1.544774], while the 1-step GDP growth forecast was -2.187 with a 95% confidence interval of [-7.457552, 3.083334].
+
+```{R}
+Data1 = read.csv("CPI.csv")
+cpi = ts(Data1[, 2], frequency=4)
+Data2 = read.csv("GDP.csv")
+gdp = ts(Data2[, 2], frequency=4)
+
+inf =100*(log(cpi[2:length(cpi)])-log(cpi[1:length(cpi)-1]))
+gdp_growth =100*(log(gdp[2:length(gdp)])-log(gdp[1:length(gdp)-1]))
+
+tsdisplay(inf) # AR(1) - unconditional mean: 1.022018
+auto.arima(inf)
+tsdisplay(gdp_growth) # MA(1) - unconditional mean: 0.4853
+auto.arima(gdp_growth)
+
+# Inflation: ARCH(1) with ARMA(1,0)
+spec = ugarchspec(variance.model=list(garchOrder=c(1,0)),
+mean.model=list(armaOrder=c(1,0)),distribution.model="norm")
+# Fit ARCH Model
+inf.arch = ugarchfit(data=inf,spec=spec)
+# Fitted model outcome
+inf.arch 
+# 1-step Forecast: 0.668
+inf_fcst = ugarchforecast(inf.arch, data=inf, n.ahead=1, n.roll=0, out.sample=0)
+inf_fcst 
+# 95% Confidence Interval for the 1-step forecast: [-0.2087722, 1.544774]
+inf_mu <- fitted(inf_fcst) 
+inf_sig <- sigma(inf_fcst) 
+inf_CI = cbind(inf_mu-1.96*inf_sig, inf_mu+1.96*inf_sig)
+inf_CI
+
+
+# Inflation: ARCH(1) with ARMA(0, 1)
+spec = ugarchspec(variance.model=list(garchOrder=c(2,0)),
+mean.model=list(armaOrder=c(0,1)),distribution.model="norm")
+# Fit ARCH Model
+gdp.arch = ugarchfit(data=gdp_growth,spec=spec)
+# Fitted model outcome
+gdp.arch 
+# 1-step Forecast: 0.5724
+gdp_fcst = ugarchforecast(gdp.arch, data=inf, n.ahead=1, n.roll=0, out.sample=0)
+gdp_fcst 
+# 95% Confidence Interval for the 1-step forecast: [ -0.3300818 , 1.474929]
+gdp_mu <- fitted(gdp_fcst) 
+gdp_sig <- sigma(gdp_fcst) 
+gdp_CI = cbind(gdp_mu-1.96*gdp_sig, gdp_mu+1.96*gdp_sig)
+gdp_CI
+```
+
+
+## 4. Problem 12.2 (i.e., Chapter 12, Problem 2) from Textbook c -Hyndman’s book (3rd Ed). ##
+
+**a. Fit a dynamic harmonic regression model to these data. How does it compare to the regression model you fitted in Exercise 5 in Section 7.10?**
+
+As gasoline is data with a weekly frequency, I've implmented a loop in which K is no larger than the the frequency divided by two, as 10. From the loop, I've fonud out that the best K value would be 6, resulting in the lowest AICc values for the dynamic harmonic regression model. The best dynamic harmonic regression model is ARIMA(0,1,1) with K=6. This differs from the previous regression model in Exercise 5 in Section 7.10 in that it now not only incorporates the ARMA model but also identifies the best K parameter for optimizing the results of the regression model. 
+
+```{R}
+data("us_gasoline")
+us_gasoline[,1] = as.Date(as.data.frame(us_gasoline)[,1])
+gasoline = ts(us_gasoline[, 2], frequency=52)
+
+bestfit <- list(aicc=Inf)
+for(i in 1:10) {
+  fit <- auto.arima(gasoline, xreg=fourier(gasoline, K=i),
+    seasonal=FALSE)
+  if(fit[["aicc"]] < bestfit[["aicc"]]) {
+    bestfit <- fit
+    bestK <- i
+  }
+}
+
+print(bestK) # Best K: 6 
+print(bestfit) # Best Dynamic Model: ARIMA(0,1,1)
+
+# # Exercise 5 in Section 7.10
+# gas2004<-window(gasoline, end=c(2005))
+# autoplot(gas2004, ylab = "Gas Supply (Weekly)")
+# 
+# fourier.gas1 <- tslm(gasoline ~ fourier(gasoline, K=7)) -2322.2984153
+# summary(fourier.gas1)
+# CV(fourier.gas1)
+```
+
+**b. Check the residuals from both models and comment on what you see.**
+
+Considering the residuals of our best dynamic harmonic model, ARIMA(0,1,1), we may conclude that the residuals still retain some statistical significant, as indicated by the seasonal lags in ACF at lags 52, 104, and 156. In addition, the Ljung-Box test reveals a significantly low p-value, indicating that there is still autocorrelation between the residuals, which we must continue to take care with further trials. 
+
+```{R}
+checkresiduals(bestfit)
+```
+
+**c. Could you model these data using any of the other methods we have considered in this book? Explain why/why not.**
+
+As data frequencies increase, they tend to get noisier and have longer seasonal periods, making it harder to manage weekly data, which is both large and non-integer. Using approaches such as ETS or a seasonal ARIMA model, which cannot handle seasonal periods longer than 24, is nearly impossible. However, when the time series is long enough to reveal some of the longer seasonal periods, STL, dynamic harmonic regression, or TBATS will be required. Because seasonality varies over time, the STL method or TBATS model is preferred. If there are covariates that are useful predictors and can be introduced as additional regressors, then the dynamic harmonic regression technique is preferable.
+
+## 5. Problem 12.3 (i.e., Chapter 12, Problem 3) from Textbook c -Hyndman’s book (3rd Ed). ##
+
+**Experiment with using NNETAR() on your retail data and other data we have considered in previous chapters.**
+
+To evaluate the performance of the NNETAR forecasting model, I employed a total of three datasets, including Australian retail data, Australian gas production (qgas), and Australian monthly expenditure on eating out (auscafe). To have a better grasp of its forecasting performance, I've applied ARIMA models to each dataset for comparisons. Retail and monthly eating out data have lower MAPE values in their ARIMA model, indicating that ARIMA model seems to perform better than NNETAR model; however, Australian gas production data has a lower MAPE value in its NNETAR model than ARIMA model, indicating that NNETAR model indeed performs better than ARIMA model in this case.
+
+```{R}
+data("aus_retail")
+retail = aus_retail[, 3:5]
+colnames(retail) = c("ID", "Month", "Turnover")
+retail = retail %>%
+     filter(retail$ID == "A3349849A")
+retail = retail[ , 2:3]
+retail$Month = as.Date(retail$Month)
+
+# Retail - ARIMA > NNETAR (MAPE is less in ARIMA)
+# 1) NNETAR() 
+retail = ts(retail[,2], start=c(1982,4), frequency=12)
+retail_nnetar <- nnetar(retail, lambda = BoxCox.lambda(retail))
+retail_nnetar_fct <- forecast::forecast(retail_nnetar, h = 10)
+autoplot(retail_nnetar_fct, main="NNETAR: Australian Retail")
+retail_future =  subset(retail, start = length(retail) + 1)
+forecast::accuracy(retail_nnetar_fct, retail_future)["Test set", ]
+# 2) ARIMA() 
+retail_arima <- auto.arima(retail)
+retail_arima_fct <- forecast::forecast(retail_arima, h=10)
+autoplot(retail_arima_fct, main="ARIMA: Australian Retail")
+forecast::accuracy(retail_arima_fct, retail_future)["Test set", ]
+
+# Australian gas production - NNETAR > ARIMA (MAPE is less in NNETAR)
+# 1) NNETAR() 
+qgas = ts(qgas, start=c(1956,1), end=c(2010, 2), frequency=4)
+qgas_nnetar <- nnetar(qgas, lambda = BoxCox.lambda(qgas))
+qgas_nnetar_fct <- forecast::forecast(qgas_nnetar, h = 10)
+autoplot(qgas_nnetar_fct, main="NNETAR: Australian Gas Production")
+qgas_future =  subset(qgas, start = length(qgas) + 1)
+forecast::accuracy(qgas_nnetar_fct, qgas_future)["Test set", ]
+# 2) ARIMA() 
+qgas_arima <- auto.arima(qgas)
+qgas_arima_fct <- forecast::forecast(qgas_arima, h=10)
+autoplot(qgas_arima_fct, main="ARIMA: Australian Retail")
+forecast::accuracy(qgas_arima_fct, qgas_future)["Test set", ]
+
+# Monthly expenditure on eating out in Australia - ARIMA > NNETAR (MAPE is less in ARIMA)
+# 1) NNETAR() 
+data("auscafe")
+auscafe_nnetar <- nnetar(auscafe, lambda = BoxCox.lambda(auscafe))
+auscafe_nnetar_fct <- forecast::forecast(auscafe_nnetar, h=10)
+autoplot(auscafe_nnetar_fct, main="NNETAR: Monthly expenditure on eating out in Australia")
+auscafe_future =  subset(auscafe, start = length(auscafe) + 1)
+forecast::accuracy(auscafe_nnetar_fct, auscafe_future)["Test set", ]
+# 2) ARIMA() 
+auscafe_arima <- auto.arima(auscafe)
+auscafe_arima_fct <-forecast::forecast(auscafe_arima, h=10)
+autoplot(auscafe_arima_fct, main="ARIMA: Monthly expenditure on eating out in Australia")
+forecast::accuracy(auscafe_arima_fct, auscafe_future)["Test set", ]
+
+```
+

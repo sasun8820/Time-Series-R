@@ -1,0 +1,489 @@
+---
+title: 'Econ 104 Group Project #2'
+author: 
+- "Jeonseo Lee (UID:604-788-672),"
+- "Rostam Kianian (UID: 605-699-858),"
+- "Kimia Karaminejad ranjbar (UID: 405-427-057)," 
+- "Kwan Lok Mak (UID: 305-789-681)"
+date: "2023-02-17"
+output:
+  pdf_document:
+    toc: yes
+    toc_depth: 2
+  word_document:
+    toc: yes
+    toc_depth: '2'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(ggplot2)
+library(forecast)
+library(vars)
+library(corrr)
+library(corrplot)
+library(car)
+library(AER)
+library(broom)
+library(PoEdata)
+library(leaps)
+library(tidyverse)
+library(caret)
+library(MASS)
+library(Metrics)
+library(dynlm)
+```
+
+```{r}
+data1 = read.csv("REAINTRATREARAT10Y.csv")
+colnames(data1) = c("Date", "Interest_Rate")
+View(data1)
+ir = ts(data1[,2], start=c(2000,1), end=c(2023,1), frequency=12) 
+autoplot(ir)
+
+data2 = read.csv("WILL5000PR.csv")
+colnames(data2) = c("Date", "Stock_Price")
+sp = ts(data2[,2], start=c(2000,1), end=c(2023,1), frequency=12)
+autoplot(sp)
+```
+
+# 1.Provide a descriptive analysis of your variables #
+
+## a) Histograms & Fitted Values ##
+
+The histogram for interest rate shows that it is skewed right, meaning that low interest rates, less than 1% had the highest number of occurrences.The histogram for Wilshire Stock Price shows one noticeable peak at 10000 to 15000.
+
+```{R}
+d1 <- density(ir, cut = 0)
+hist(ir, prob = TRUE, breaks = 10, main="Histogram of Interest Rates", col="skyblue4",
+     xlab = "Interest Rate")
+lines(d1, col = 2, lwd=2)
+
+d2 <- density(sp, cut=0)
+hist(sp, prob = TRUE, breaks = 10, main="Histogram of Wilshire Stock Price", col="skyblue4",
+     xlab="Wilshire Stock Price")
+lines(d2, col = 2, lwd=2)
+```
+
+## b) Correlation Plots ##
+
+Correlation between the interest rate and Wilshire stock price is -0.5 that they are negatively (inversely) correlated with each other. 
+
+```{r}
+data_cor <-data.frame(ir,sp)
+cor <- cor(data_cor)
+corrplot(cor, type="upper", order="hclust",  method = 'circle',
+         title="Correlation Plot",
+         pch=40,
+         addCoef.col = 1,
+         number.cex = 0.7,
+         tl.cex = 1.5) # colorful number
+```
+
+## c) Boxplots ##
+
+Boxplot shows the median at roughly 1% of the interest rate, with a skewed right distribution. Unlike interest rate, which none of the data fall outside the IQR range, we can notice a few outliers in the Wilshire stock price dataset with its median at roughly 13000. 
+
+```{R}
+boxplot(ir, main="Interest Rate")
+boxplot(sp, main="Wilshire Stock Price")
+```
+
+## d) Scatter Plots ##
+
+The scatterplot shows the connection between interest rate and wilshire stock price. Each point indicates what the int. rate and stock price is within a certain year. It is clear from this plot that although average to low interest rates, such as less than 2%, typically have random stock prices, when there are high int. rate (above 2%), stock prices appear to not be random but rather to be stabilizing at low levels.
+
+```{R}
+plot(x = ir, y = sp, xlab="Interest Rate", ylab="Wilshire Stock Price", main="Scatter Plot", col="blue",
+     lwd=2)
+```
+
+## e) Statistical Summaries ##
+
+As both datasets are computed from different scales, the values are different. The median interest rate over the periods is 1.0144, and the median Wilshire stock price is 14293. 
+```{r}
+summary(ir)
+summary(sp)
+```
+
+# 2. Show the tsdisplay plot for each variable and comment on the stationarity, ACF, and PACF results. #
+
+Both do not possess stationarity. In addition, given ACF values in both datasets decay gradually to 0 and exhibit a sharp spike in PACF at lag 1, we might argue that the AR(1) model best fits both datasets.
+
+```{R}
+tsdisplay(ir, main = "Interest Rates")
+tsdisplay(sp, main = "Wilshire Stock Price")
+```
+
+
+# 3. Fit two AR(p) models to each variable, and evaluate the model performance as follows: #
+
+Given the prior examination of ACF and PACF values, we are incorporating the AR(1) model into both datasets, experimenting with the AR(3) model for the interest rate as its lag 2 has not yet showed any value in tsdisplay(), and adding the AR(2) model to the stock price dataset.
+
+```{R}
+# Interest Rate
+# AR(1)
+ir.ar1 = ar(ir,FALSE,1)
+ir.ar1
+
+# AR(3)
+ir.ar3 =ar(ir,FALSE,3)
+ir.ar3
+
+## Stock Price 
+# AR(1)
+sp.ar1 =ar(sp,FALSE,1)
+sp.ar1
+
+# AR(2)
+sp.ar2 =ar(sp,FALSE,2)
+sp.ar2
+```
+
+## a. Plot and comment on the ACF and PACF of the residuals. ##
+
+Four AR models, two for each variable, appear to have stationary in their residuals, exhibiting no distinct patterns. This reinforces the idea that the AR models have already taken care of significants lags and are hence good fits. 
+
+```{R}
+## Interest Rate
+# AR(1)
+tsdisplay(ir.ar1$resid)
+# AR(3)
+tsdisplay(ir.ar3$resid)
+
+## Mortgage Rate
+# AR(1)
+tsdisplay(sp.ar1$resid)
+# AR(2)
+tsdisplay(sp.ar2$resid)
+```
+
+## b. Evaluate the training/testing performance by splitting the data into 2/3 training and 1/3 testing, and computing the MSE for each subset. Comment on which model is better. Make sure to also look at AIC and/or BIC. ##
+
+To evaluate it using cross-validation, we've split the data into training and test sets in the ratio of 3/2: 1/3 For the interest rate, we have tested subsets of the model up to lag 5. Both Lag 3 and 4 have nearly identical lowest MSE values. And, the third lag appears to have the lowest AIC; thus, the third lag, AR(3) would be the best fit of AR to our interest rate dataset. In the case of stock price data, the lag 2 fit appears to be the optimal model. Thus, we have chosen the AR(2) model as the best model for stock price.
+
+```{r}
+#### Interest Rate #### 
+# Creating the lags 
+ir_L1 <-ir[-length(ir)]
+ir_L2 <-ir_L1[-length(ir_L1)]
+ir_L3 <-ir_L2[-length(ir_L2)]            
+ir_L4 <-ir_L3[-length(ir_L3)]
+ir_L5 <-ir_L4[-length(ir_L4)]
+ir_L6 <-ir_L5[-length(ir_L5)]
+ir_L7 <-ir_L6[-length(ir_L6)]
+
+ir_L1<-append(c(NA), ir_L1)
+ir_L2<-append(c(NA, NA), ir_L2)
+ir_L3<-append(c(NA, NA, NA), ir_L3)
+ir_L4<-append(c(NA, NA, NA, NA), ir_L4)
+ir_L5<-append(c(NA, NA, NA, NA, NA), ir_L5)
+ir_L6<-append(c(NA, NA, NA, NA, NA, NA), ir_L6)
+ir_L7<-append(c(NA, NA, NA, NA, NA, NA, NA), ir_L7)
+
+# Training & Test Data
+n = length(ir)*2/3
+train_ir = head(ir, n)
+test_ir = tail(ir, -n)
+
+# Build the models 
+model1 = dynlm(ir~ir_L1, data=train_ir)
+prediction1 = predict(model1, test_ir)
+mse1 = mean((ir-prediction1)^2, na.rm=TRUE)
+
+model2 = dynlm(ir~ir_L1+ir_L2, data=train_ir)
+prediction2 = predict(model2, test_ir)
+mse2 = mean((ir-prediction2)^2, na.rm=TRUE)
+
+model3 = dynlm(ir~ir_L1+ir_L2+ir_L3, data=train_ir)
+prediction3 = predict(model3, test_ir)
+mse3 = mean((ir-prediction3)^2, na.rm=TRUE)
+
+model4 = dynlm(ir~ir_L1+ir_L2+ir_L3+ir_L4, data=train_ir)
+prediction4 = predict(model4, test_ir)
+mse4 = mean((ir-prediction4)^2, na.rm=TRUE)
+
+model5 = dynlm(ir~ir_L1+ir_L2+ir_L3+ir_L4+ir_L5, data=train_ir)
+prediction5 = predict(model5, test_ir)
+mse5 = mean((ir-prediction5)^2, na.rm=TRUE)
+
+# The least mse in lag 3 or 4 
+mse_comparison = data.frame(mse1,mse2,mse3,mse4)
+mse_comparison
+
+# Lag 3 has the least AIC (SC indicates the lag 1 but SC is less 
+# accurate as it penalizes for having more parameters)
+VARselect(ir, lag.max = 5)
+
+
+#### Stock Price Data ####
+# Creating the lags 
+sp_L1 <-sp[-length(sp)]
+sp_L2 <-sp_L1[-length(sp_L1)]
+sp_L3 <-sp_L2[-length(sp_L2)]            
+sp_L4 <-sp_L3[-length(sp_L3)]
+sp_L5 <-sp_L4[-length(sp_L4)]
+sp_L6 <-sp_L5[-length(sp_L5)]
+sp_L7 <-sp_L6[-length(sp_L6)]
+
+sp_L1<-append(c(NA), sp_L1)
+sp_L2<-append(c(NA, NA), sp_L2)
+sp_L3<-append(c(NA, NA, NA), sp_L3)
+sp_L4<-append(c(NA, NA, NA, NA), sp_L4)
+sp_L5<-append(c(NA, NA, NA, NA, NA), sp_L5)
+sp_L6<-append(c(NA, NA, NA, NA, NA, NA), sp_L6)
+sp_L7<-append(c(NA, NA, NA, NA, NA, NA, NA), sp_L7)
+
+# Training & Test Data
+train_sp = head(sp, n)
+test_sp = tail(sp, -n)
+
+# Build the models
+model1_sp = dynlm(sp~sp_L1, data=train_sp)
+prediction1_sp = predict(model1_sp, test_sp)
+mse1_sp = mean((sp-prediction1_sp)^2, na.rm=TRUE)
+
+model2_sp = dynlm(sp~sp_L2, data=train_sp)
+prediction2_sp = predict(model2_sp, test_sp)
+mse2_sp = mean((sp-prediction2_sp)^2, na.rm=TRUE)
+
+model3_sp = dynlm(sp~sp_L3, data=train_sp)
+prediction3_sp = predict(model3_sp, test_sp)
+mse3_sp = mean((sp-prediction3_sp)^2, na.rm=TRUE)
+
+model4_sp = dynlm(sp~sp_L4, data=train_sp)
+prediction4_sp = predict(model4_sp, test_sp)
+mse4_sp = mean((sp-prediction4_sp)^2, na.rm=TRUE)
+
+# The least mse is in lag 2
+mse_comparison2 = data.frame(mse1_sp, mse2_sp, mse3_sp, mse4_sp)
+mse_comparison2
+
+# As well, lag 2 has the least AIC and BIC
+VARselect(sp, lag.max = 4)
+```
+
+## c.Compute and plot a 10-step-ahead forecast for each model. ##
+
+```{R}
+#### Interest Rate ####
+# AR(3) 10-Step Forecast for Interest Rate (monthly)
+forecast(ir.ar3, n.ahead=10)
+
+# Plot the forecast
+autoplot(forecast(ir.ar3, n.ahead=10), 
+         main="Interest Rate: 10-Steps Forecast From AR(3)")
+
+#### Wilshire Stock Price ####
+# AR(2) 10-Step Forecast for Interest Rate (monthly)
+forecast(sp.ar2, n.ahead=10)
+
+# Plot the forecast
+autoplot(forecast(sp.ar1, n.ahead=10), 
+         main="Stock Price: 10-Steps Forecast From AR(2)")
+```
+
+# 4. For this question, you need to identify an appropriate preditor(s) for your two series. Fit two ARDL(p,q) models to each variable, and evaluate the model performance as follows: #
+
+We have used the two models, ARDL(2,2) and ARDL(3,3), to each variable.
+
+```{R}
+#install.packages("ARDL")
+library(ARDL)
+library(dplyr)
+ardl_df = merge(data1, data2, by="Date")
+
+## Interest Rates
+# ARDL(2,2) - Lag1 
+ardl22 = ardl(Interest_Rate ~ Stock_Price, data=ardl_df, order=c(2,2))
+summary(ardl22)
+
+# ARDL(3,3) - Lag 1, 3
+ardl33 = ardl(Interest_Rate ~ Stock_Price, data=ardl_df, order=c(3,3))
+summary(ardl33)
+
+## Mortgage Rate 
+# ARDL(2,2) - Lag 1
+ardl22_sp = ardl(Stock_Price ~ Interest_Rate, data=ardl_df, order=c(2,2))
+summary(ardl22_sp)
+
+# ARDL(3,3) - Lag 1, 2
+ardl33_sp = ardl(Stock_Price ~ Interest_Rate, data=ardl_df, order=c(3, 3))
+summary(ardl33_sp)
+```
+
+## a. Plot and comment on the ACF and PACF of the residuals. ##
+
+In contrast to the ACF and PACF of the original plots, the residuals are predominantly mean-reverting and resemble a white-noise process. However, due to some spikes that stood out in the longer delays (>10), it is possible that the model has a more complicated functional form (e.g. seasonal AR/MA) that has not yet been revealed.
+
+```{R}
+# ACF and PACF of the residuals 
+tsdisplay(ardl22$residuals) 
+tsdisplay(ardl33$residuals)
+tsdisplay(ardl22_sp$residuals)
+tsdisplay(ardl33_sp$residuals)
+```
+
+## b. Evaluate the training/testing performance by splitting the data into 2/3 training and 1/3 testing, and computing the MSE for each subset. Comment on which model is better. Make sure to also look at AIC and/or BIC. ##
+
+Similar to the prior case, we've split each data set into training and test sets in the ratio of 2/3 (220): 1/3 (57). From the cross-validation, we've found out that the ARDL(3,3) model appears to be a better fit than the ARDL(2,2) model due to its lower MSE and AIC values for both variables.
+
+```{r}
+# Training & Test Data 
+train_df = head(ardl_df, n)
+test_df = tail(ardl_df, -n)
+
+# Build the models 
+# Interest Rate: ARDL(2,2)
+model1 = dynlm(ir~ir_L1+ir_L2+sp+sp_L1+sp_L2, data=train_df)
+prediction1 = predict(model1, test_df)
+mse1 = mean((ir-prediction1)^2, na.rm=TRUE)
+
+# Interest Rate: ARDL(3,3)
+model2 = dynlm(ir~ir_L1+ir_L2+ir_L3+sp+sp_L1+sp_L2+sp_L3, data=train_df)
+prediction2 = predict(model2, test_df)
+mse2 = mean((ir-prediction2)^2, na.rm=TRUE)
+
+# Mortgage Rate: ARDL(2,2) 
+model3 = dynlm(sp~ir_L1+ir_L2+ir+sp_L1+sp_L2, data=train_df)
+prediction3 = predict(model3, test_df)
+mse3 = mean((sp-prediction3)^2, na.rm=TRUE)
+
+# Mortgage Rate: ARDL(3,3)
+model4 = dynlm(sp~ir_L1+ir_L2+ir_L3+ir+sp_L1+sp_L2+sp_L3, data=train_df)
+prediction4 = predict(model4, test_df)
+mse4 = mean((sp-prediction4)^2, na.rm=TRUE)
+
+# AIC and BIC
+AIC(model1)
+AIC(model2)
+
+AIC(model3)
+AIC(model4)
+
+# Conclusion: 
+# Interest Rate: ARDL(3,3) > ARDL(2,2)
+# Mortgage Rate: ARDL(3,3) > ARDL(2,2)
+```
+
+## c. Compute and plot a 10-step-ahead forecast for each model. ##
+
+```{R}
+par(mfrow=c(2,1), mar=c(4,4,2,1), oma=c(0,0,2,0))
+
+# ARDL (3,3) Forecast to Interest Rate
+forecast(ardl33$fitted.values, h=10)
+autoplot(forecast(ardl33$fitted.values, h=10), main = "ARDL (3,3) Interest Rate")
+
+# ARDL (3,3) Forecast to Stock Price 
+forecast(ardl33_sp$fitted.values, h=10)
+autoplot(forecast(ardl33_sp$fitted.values, h=10), main = "ARDL (3,3) Stock Price")
+```
+
+
+# 5. Fit a VAR(p) model to your data (y1t and y2t), and evaluate the model performance as follows: #
+
+Using the VARselect() method, we determined that the Var(1) model better describes the relationship between the two variables.
+
+```{R}
+y = cbind(ir, sp)
+y_tot=data.frame(y)
+
+# VAR suggest that the best model could be VAR(1) model 
+VARselect(y_tot, lag.max = 5)
+
+# Var model for Interest Rate & Stock Price
+y_model=VAR(y_tot,p=1)
+summary(y_model) 
+```
+
+## a. Plot the CCF and comment on the results. ##
+
+Two variables are maximally correlated at lag 1.0, which, for our monthly data, corresponds to a one-month lag.
+
+```{r}
+ccf(ir,sp,ylab="Cross-Correlation Function", main = "Inflation Rate & Stock Price CCF")
+ccf(sp,ir,ylab="Cross-Correlation Function", main = "Inflation Rate & Stock Price CCF")
+```
+
+## b. Perform a Granger-Causality test, and discuss whether it is possible to identify any causality between the variables. ##
+
+The tests suggest that there is a causality present in which interest rate affects stock price, with a p-value less than 0.05. On the other hand, no causality exists from stock price to the interest rate noted with its large p-value.
+
+```{r}
+# Granger-Casuality test
+grangertest(ir ~ sp, order = 1)
+grangertest(sp ~ ir, order = 1) # viable model to attest causality 
+```
+
+## c. Plot the IRFs and comment on the plots. ##
+
+According to the IRF plots respectively, the shock in interest rate appears to have a negative impact on stock prices (First plot). On the other hand, there appears to be no response of the interest rate to a shock in the stock price.
+
+```{R}
+plot(irf(y_model, n.ahead=36, boot = TRUE))
+```
+
+## d. Show the plot that includes the data, fitted values, ACF, and PACF all in one figure. Comment on the results. ##
+
+Most residuals appear to be mean-reverting and have the structure of white noise, reinforcing the notion that the model has addressed the majority of significant lags. As some spikes can be observed in lag 2 for interest rates and lag 13 for stock prices, whether the models may have seasonal functional forms needs to be further examined. 
+
+```{R}
+# Interst Rate
+tsdisplay(residuals(y_model)[ ,1], main = "Interest Rate", lag.max=20)
+
+# Stock Price
+tsdisplay(residuals(y_model)[ ,2], main = "Stock Price", lag.max=20)
+```
+
+## e. Evaluate the training/testing performance by splitting the data into 2/3 training and 1/3 testing, and computing the MSE for each subset. Comment on which model is better (e.g., the one for y1t or for y2t). Make sure to also look at AIC and/or BIC. ##
+
+We've also done 2/3:1/3 ratio of split for training and test sets. Through testing, we have once again determined that having stock price as a response variable that is affected by interest rate appears to be more explanatory, with a higher R2 and statistically significant lag. As the response variables for y1t and y2t are distinct, the AIC and MSE scales cannot be compared across the two models.
+
+```{r}
+# Split data into training & test data 
+train_df = head(y, n)
+test_df = tail(y, -n)
+
+# Build the models 
+# VAR(1) model to Interest Rate (y1t) 
+y1t = dynlm(ir ~ L(ir,1) + L(sp,1) , data=train_df) 
+prediction1 = predict(y1t, test_df)
+prediction1
+mse1 = mean((ir-prediction1)^2, na.rm=TRUE)
+mse1
+AIC(y1t)
+summary(y1t)
+
+# VAR(1) model to Stock Price (y2t) 
+y2t= dynlm(sp ~ L(ir,1) + L(sp,1), data=train_df) 
+prediction2 = predict(y2t, test_df)
+mse2 = mean((ir-prediction2)^2, na.rm=TRUE)
+mse2
+AIC(y2t)
+summary(y2t)
+```
+
+## f. Compute and plot an n-step-ahead forecast for each model. You can choose the number of steps-ahead. ##
+
+We've chosen the 10-steps ahead forecast for this Var model.
+
+```{R}
+var.predict = predict(object=y_model, n.ahead=10)
+plot(var.predict)
+```
+
+## g. Plot and discuss the FEVD plot. ##
+
+Unlike the absence of impact of stock price on interest rate (the first plot), the impact of interest rate on stock price appears to increase gradually. (as seen in the plot below) From this, we can infer that the stock price is influenced by the interest rate.
+
+```{r}
+fevd.y <-fevd(y_model, n.ahead=50)
+plot(fevd.y)
+```
+
+# 6. Conclusion #
+## Provide a short (1 paragraph) summary of your overall conclusions/findings, and discuss which model is your preferred one.##
+
+To start, the scatterplot depicted gave the impression that although there is a random pattern between interest rate and wilshire stock prices when interest rate is low (below 2%), low wilshire stock prices when the interest rate is high(above 2%) might indicate causality linked between the two variables. Analyzing the ACF and PACF of the residuals, it is evident that our variables were better suited with fewer lags. Using two datasets, the real interest rate and the Wilshire stock price, we have thus far executed three models: AR, ARDL, and VAR. The original plots of both data sets resemble an AR model with a high persistence and non-regressive form. We’ve performed 2/3 (estimation) to 1/3 (prediction) cross-validation for the purpose of identifying the best model for each method. As noted, the interest rate dataset seemed to be best fitted by the AR(3) model, whereas the stock price dataset was best fit by the AR(2) model. We used AR(3) and AR(2) for interest rate and Wilshire stock price, respectively, to predict the 10 steps forecast. In addition, by applying each lag to both variables in the ARDL model, we discovered that the model with the lowest MSE is ARDL(3,3) with three lags for each variable. Finally, the VAR(1) model was chosen as the best model for the two datasets, possibly capturing any causality between them. We noticed that interest rate influences on stock price, and not vice versa, which makes intuitive sense given that stock price and people’s intentions to purchase stocks are dependent on interest rate changes. Then, the Granger test and FEVD plots confirm our project’s central belief and hypothesis that the interest rate influences the stock price.

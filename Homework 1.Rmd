@@ -1,0 +1,382 @@
+---
+title: "Econ 144 Homework 1"
+author: "Jeonseo David Lee (UID: 604-788-672)"
+date: "2023-01-20"
+output:
+  pdf_document: default
+  html_document: default
+fontsize: 12pt
+---
+**1) Problem 3.1**
+
+```{r}
+getwd()
+rdpi <- read.csv("real.csv")
+names(rdpi) <- c("date", "rdpi")
+rpce <- read.csv("DPCERA3M086SBEA.csv")
+names(rpce) <- c("date", "rpce")
+
+# Make it as a time-series data set - real disposable income 
+rdpi <- ts(rdpi, start=c(1959,1), end=c(2022,11), freq=12)
+
+# Make it as a time-series data set - real personal expenditure
+# (I used the one with a chain-type quantity index based on a monthly freq)
+rpce <- ts(rpce, start=c(1959,1), end=c(2022,11), freq=12)
+```
+
+***a) Growth rates***
+
+The volatility of disposable income appears to be greater than that of real consumption, which I could interpret from a macroeconomics perspective as the permanent income model indicating that people's consumption is reliant on their current income at the moment.
+
+```{r}
+# Take the natural log of the data sets and find the growth rates  
+#library(dplyr)
+#library(tidyverse)
+lag <- stats::lag
+change_rdpi <- log(rdpi[,2]) - log(lag(rdpi[,2]))
+change_rpce <- log(rpce[,2]) - log(lag(rpce[,2]))
+
+year <-seq(1959, 2022.90,length=length(change_rdpi))
+
+# Plot them 
+par(mfrow=c(2,1), mar=c(4,4,2,1), oma=c(0,0,2,0))
+plot(change_rdpi, ylab="Growth Rate", xlab="Year", lwd=2, col='skyblue3', xlim=c(1959,2022), main="Real Disposable Income")
+plot(change_rpce, ylab="Growth Rate", xlab="Year", lwd=2, col='skyblue3', xlim=c(1959,2022), main="Real Personal Expenditure")
+```
+
+***b) Regression of consumption growth on income growth***
+
+As both are natural log variables, their elasticity is estimated to be simply -0.0274 change of unit in rdpi. This indicates that a 1% rise in disposable income growth results in a 0.027% loss in real consumption growth. R-squared is quite low at 0.0007818, indicating that this model is insufficiently explanatory. Moreover, the p-value of 0.2065 is quite too high to be statistically significant.
+
+```{r}
+regression <- lm(change_rpce ~ change_rdpi)
+sum <- summary(regression)
+sum
+```
+
+***c) Add a lag of the growth of disposable income to the equation for (b)***
+
+Its lag has very negligible impacts on the overall model. Thus, at best, there is weak evidence of adjustment lags in consumption.
+```{r}
+lag_rdpi <- lag(change_rdpi)
+regression2 <- lm(change_rpce ~ change_rdpi + lag_rdpi)
+summary(regression2)
+```
+**2) Problem 3.3**
+
+***a) U.S. Real GDP***
+
+The U.S. real GDP is the inflation adjusted value of the goods and services produced by labor and property located in the United states, measured in billions of chained 2012 dollars and calculated every quarter at a seasonally adjusted annual rate. The increasing trend indicates that this process is not stationary, as its moments are not constant across time.
+
+```{r}
+gdp_data <- read.csv("GDPC1.csv")
+# make it as time-series data
+gdp_data <- ts(gdp_data, start=c(1947,7), end=c(2022,7), freq=4)
+gdp <- gdp_data[,2]
+plot(gdp, ylab="GDP", main = "U.S. Real GDP", col="skyblue4", lwd=2, xlim = c(1947,2022))
+#year <-seq(1947, 2022.7,length=length(gdp))
+```
+
+***b) The exchange rate of the Japanese yen against the U.S. dollar***
+
+The exhange rate of the Japanese yen against the U.S. dollar is calculated as the noon buying rates in New York City for cable transfers payable in foreign currencies. This is calculated daily, and measured in units of the ratio of Japanese Yen to One U.S. dollar. The increasing trend indicates that this process is not stationary, as its moments are not constant across time.
+
+```{r}
+er_data <- read.csv("DEXJPUS.csv")
+names(er_data) <- c("date", "exchange rate")
+
+# Make the missing value into NA 
+er_data[er_data == "."] <- NA
+er_data <- na.omit(er_data)
+
+# make it as time-series data
+er_data <- ts(er_data, start=c(2022, 1), end=c(2023, 1), freq=365)
+er <- er_data[,2]
+plot(er, ylab="Exchange Rate", main = "ER of Yen to Dollar", col="skyblue4", lwd=2, xlim = c(2022,2023))
+#year <-seq(2022, 2023.05,length=length(er))
+```
+
+***c) The 10-year U.S. Treasury constant maturity yield.***
+
+The 10-year U.S. Treasury Maturity Yield is the yield to maturity of 10-Year Zero Coupon Bonds issued by the Treasury, measured daily and in units of percent. The increasing trend indicates that this process is not stationary, as its moments are not constant across time.
+
+View a 10-year yield estimated from the average yields of a variety of Treasury securities with different maturities derived from the Treasury yield curve.
+
+```{r}
+treasure_data <- read.csv("DGS10.csv")
+names(treasure_data) <- c("date", "cm")
+# Mark/replace missing values as NA and omit them 
+treasure_data[treasure_data == "."] <- NA
+treasure_data <- na.omit(treasure_data)
+
+# Make it as time-series data
+treasure_data <- ts(treasure_data, start = c(2010), end = c(2022), freq = 365)
+treasure <- treasure_data[, 2]
+#year <-seq(2010, 2022,length=length(treasure))
+plot(treasure, ylab="Maturity Yield", main = "10-Year U.S. Treasury Constant Maturity Yield", col="skyblue4", lwd=2, xlim = c(2010, 2022))
+```
+
+***d) The U.S. unemployment rate.***
+
+The U.S. unemployment rate appears to be rather stable and stationary over the years until 2021, with the pandemic occurring as an unanticipated outlier that causes a substantial increase in the unemployment rate. The following year, the unemployment rate got steadied at below 4%, indicating a recovery from the previous year's high levels. 
+
+```{r}
+unemployment_data <- read.csv("UNRATE.csv")
+
+# Make it as time-series data
+unemployment_data <- ts(unemployment_data, start=c(1948, 1), end=c(2022, 12), freq = 12)
+unemployment <- unemployment_data[,2]
+plot(unemployment, ylab="Rate", main = "U.S. Unemployment Rate", col="skyblue4", lwd=2, xlim = c(1948, 2022.8))
+```
+
+**3) Problem 3.5**
+
+```{r}
+data <- read.csv("P3.csv", header = TRUE)
+```
+
+***a) Plot the time series *** 
+
+The upward trend of GDP over time indicates that it is not either first-order or second-order weakly stationary, as there are different means in different periods of time.
+
+```{r}
+data <- ts(data, start=c(2001), frequency = 4)
+ts <- data[, 2]
+year <-seq(2001, 2004,length=length(ts))
+plot(ts, xlab="Year", ylab="GDP", lwd =3, col='skyblue4', xlim = c(2001,2004.6), main = "Nominal GDP (Quarterly)")
+```
+
+***b) Growth rate of nominal change of GDP ***
+
+```{r}
+Yt <- data[,2]
+Yt_1 <-lag(data[,2])
+g1 <- 100*((Yt-Yt_1)/Yt_1)
+head(g1,3)
+```
+
+***c) Plot the natural logarithm of the time series ***
+The overall upward trend persists the same as the original time series values. It is also not stationary and the inclement appears smooth over the period.
+
+```{r}
+yt <- log(data[,2])
+data_2 <- ts(yt, start=c(2001), frequency = 4)
+year <-seq(2001, 2004,length=length(data_2))
+plot(data_2, xlab="Year", ylab="GDP", lwd =3, col='skyblue4', xlim = c(2001,2004.6), main="Nature Log of GDP (Quarterly)")
+```
+
+***d) Calculate the growth rate of log of nominal GDP *** 
+
+```{r}
+yt_1 <- lag(yt)
+g2 <- 100*((yt-yt_1)/yt_1)
+head(g2, 3)
+```
+
+***e)*** 
+The difference in the growth rate of nominal GDP (b) and that of its natural-log (d) is minimal, as both follow the similar trend. 
+
+
+**4) Problem 3.7 **
+
+The data that the problem was asking was somewhat outmoded, having been collected in 2006 (not available at the moment). Thus, I've downloaded the data from the years 2013 to the present. 
+
+```{r}
+#library(lubridate)
+sp500 <- read.csv("SP500.csv")
+sp500[sp500 == "."] <- NA 
+sp500 <- na.omit(sp500)
+Pt = ts(sp500, start = c(2018, 01, 11), end = c(2023, 01, 11), frequency = 365)
+pt = log(Pt[ ,2])
+```
+
+***a) Compute the daily return ***
+
+```{r}
+pt_1 <- lag(pt)
+Rt <- pt - pt_1
+head(Rt, 10)
+```
+
+***b) Compute the sample moments of return: mean, variance, skewness, and kurtosis***
+
+```{r}
+library(moments)
+mean(Rt)
+var(Rt)
+skewness(Rt)
+kurtosis(Rt)
+hist(Rt, breaks="Sturges", col="skyblue4", main="Histogram of Returns")
+```
+
+***c) Plot Rt vs. Rt_1, Rt_2, Rt_3, and Rt_4***
+
+From the regression viewpoints of the below plots, there seems to be none of any linear regression pattern between today's returns (Rt) and the past returns (Rt_1 ~ Rt_4)
+```{r}
+pt_2 <- lag(pt_1)
+pt_3 <- lag(pt_2)
+pt_4 <- lag(pt_3)
+pt_5 <- lag(pt_4)
+
+Rt_1 <- pt_1 - pt_2
+Rt_2 <- pt_2 - pt_3
+Rt_3 <- pt_3 - pt_4
+Rt_4 <- pt_4 - pt_5
+
+par(mfrow=c(2,2), mar=c(6,6,2,1), oma=c(0,0,2,0))
+plot(Rt_1, Rt, pch = 16, cex = 0.8, col = "skyblue4", main = "Rt vs Rt_1", xlab = "Rt_1", ylab = "Rt")
+plot(Rt_2, Rt, pch = 16, cex = 0.8, col = "skyblue4", main = "Rt vs Rt_2", xlab = "Rt_2", ylab = "Rt")
+plot(Rt_3, Rt, pch = 16, cex = 0.8, col = "skyblue4", main = "Rt vs Rt_3", xlab = "Rt_3", ylab = "Rt")
+plot(Rt_4, Rt, pch = 16, cex = 0.8, col = "skyblue4", main = "Rt vs Rt_4", xlab = "Rt_4", ylab = "Rt")
+```
+
+**5) Problem 8 in Textbook c, ch2.8**
+
+For the autoplot, there is a clear upward trend. However, any seasonality or cycle are hard to find.
+For the seasonal plot, there has been an overall increasing trend over the years. Plus, there exists a very clear seasonality, with every Decemeber having the highest sales peak, followed by a decrease in January. Also, the other peaks are found in October, July, and March, which appear to have certain a number of holidays that may enhance sales. Cycle is hardly noticeable in this sample. 
+The seasonal subseries offer all three components, trend, seasonality, and cycle in a very clear sense. It is indeed special as it also provides the mean value in sales. Wee see a big increase in the years of 2010 to 2020, and in month-wise, as other plots have suggested, sales have increased at the end of the year (Oct - Dec) then they have waned in January. 
+gg_lag function depicts a clear upward trend, which seemed identical throughout the years. Lastly, ACF shows that almost all lagged years have high autocorrelation coefficients, demonstrating that there are certainly specific seasonality and cycle to consider.
+
+
+```{r}
+#install.packages('ggplot2')
+#install.packages('tsibbledata')
+#install.packages('tsibble')
+#install.packages('dplyr')
+#install.packages('ggfortify')
+#install.packages('feasts')
+
+library(tsibble)
+library(tsibbledata)
+library(dplyr)
+library(ggplot2)
+library(ggfortify)
+library(feasts)
+
+colnames(aus_retail) <- c("State", "Industry", "Series_ID", "Month", "Turnover")
+#Choose my own seed number
+set.seed(624) 
+myseries = aus_retail %>%
+  filter(Series_ID == sample(aus_retail$Series_ID, 1))
+
+autoplot(myseries, Turnover)
+
+myseries %>% gg_season(Turnover)
+
+gg_subseries(myseries, Turnover)
+
+gg_lag(myseries, Turnover)
+
+myseries %>% 
+     ACF(Turnover) %>% 
+     autoplot()
+```
+
+**6) Problem 2 (Chapter 3, Section 3.7) from Textbook c. **
+
+***a) US GDP***
+Over the years, US GDP has been experiencing a clear trend of a great increase in GDP.
+
+```{r}
+#colnames(global_economy)
+US <- subset(global_economy, Country == "United States")
+US_gdp <- US[, c("Year", "GDP")]
+#sum(is.na(US_gdp$GDP))
+with(US_gdp, plot(Year, GDP, main="United States GDP", ylab="US GDP", lwd=3, col='skyblue4',, type = "l"))
+```
+
+***b) Slaughter of Victorian “Bulls, bullocks and steers” in aus_livestock.***
+The slaughtering of victorian livestock has shown an overall decreasing trend. Despite the absence of certain seasonality, there seems to be a U-shaped of cycle visible in the plot.
+
+```{r}
+#colnames(aus_livestock)
+aus_livestock %>% 
+  filter(Animal == "Bulls, bullocks and steers",
+         State == "Victoria") %>% 
+  autoplot() +
+  labs(title = "Victoria, AU Slaughters per month",
+       subtitle= "Bulls, bullocks and steers",
+       x = "Date (Month)",
+       y = "Slaughter Counts")
+```
+
+***c) Victorian Electricity Demand from vic_elec.***
+
+Victorian electricity demand seems to have a stationarity characteristic where the trend is mean-reverting. Seasonality seems to be constant except for a few peaks as outliers in the year 2014. Lastly, there are obvious patterns of cycles. 
+
+As its half-hourly data contains very large amounts of data that can generate a great deal of noise, I also converted its dataset to a daily frequency to make it visually easier to interpret.
+```{r}
+autoplot(vic_elec, Demand) + 
+     labs(title="Victorian Electricity Demand (Half-hourly)",
+          x = "Date",
+          y = "Demand",
+          colour = "Species")
+
+# with(vic_elec, tapply(Demand, Date, sum))
+daily_demand <- vic_elec %>%
+    index_by(Date) %>%
+    summarise(Demand = sum(Demand)) 
+
+autoplot(daily_demand) +
+     labs(title="Victorian Electricity Demand (Daily)",
+          x = "Date",
+          y = "Demand",
+          colour = "Species")
+```
+
+***d) Gas production from aus_production.***
+
+Gas production in Australia has been exceptionally low until the 1970s. Then, it shows a substantial, increasing trend. There tend to be neither seasonality nor cycle present in the data.
+
+Same as the previous problem c), I've rearranged the frequency to yearly this time to grasp its overall trend better. 
+
+```{r}
+# Quarterly
+aus_production <- aus_production 
+autoplot(aus_production, Gas) +
+  labs(title= "Australian Gas Production (Quarterly)")
+
+# Yearly 
+aus_production2 <- aus_production
+new_date <- substr(aus_production2$Quarter, 1, 4)
+aus_production2$Quarter <- new_date
+
+aus_production2<- aus_production2 %>% 
+     group_by(Quarter) %>% 
+     summarise(gas = sum(Gas))
+
+aus_production2 <- aus_production2[1:nrow(aus_production2)-1, ]
+
+with(aus_production2, plot(Quarter, gas, main = "Australian Gas Production (Yearly)", type = "l", col="skyblue4", lwd=3))
+```
+
+**7) Problem 8 (Chapter 3, Section 3.7) from Textbookc.**
+
+By decomposing the data into its component parts, we are able to observe these spikes and troughs much more clearly in the irregularity. Specifically, the spike in 2005 (approx) appears to be much larger than expected in the original graph's relatively moderate trend. In addition, the multiplicative seasonality is more clearly depicted by using x-11, as the amplitudes decreased between 1990 and 2000 and then increased substantially about 2021 to the present.
+
+```{r}
+#install.packages("seasonal")
+#install.packages("x13binary")
+#install.packages("forecast")
+#seasonal::checkX13()
+#Sys.setenv(X13_PATH = system.file("bin", package="x13binary"))
+library(seasonal)
+library(x13binary)
+library(dplyr)
+library(forecast)
+myseries2 <- ts(myseries[ ,5], frequency = 12, start = c(1982, 4))
+fit <- myseries2 %>% 
+     seas(x11 = "")
+autoplot(fit) +
+  ggtitle("X11 Decomposition of Retail Data")
+```
+
+**8) Problem 9 (Chapter 3, Section 3.7) from Textbookc.**
+
+***a) Write about 3–5 sentences describing the results of the decomposition. Pay particular attention to the scales of the graphs in making your interpretation.***
+
+The overall trend resembles closely the initial plot, which was an upward trend. The seasonality appears to be additive because the amplitude remains constant between the values 100 and -100. (I would not deny that there is still a possibility of a modest rise in amplitude as indiciating its multiplicative property.) In the same way, the comparison of scales also becomes clear to recognize in the remainder (irregularities), as the scales range from 0 to 400. The seasonality by month that is depicted in figure 3.20 illustrates the unique seasonality structure where it peaks in March, declines throughout the year, and recovers in December, with the lowest labor force rates in January and August.
+
+***b) Is the recession of 1991/1992 visible in the estimated components? ***
+
+The recession of 1991/1992 is most evident in the irregularity component as a dip, which is not depicted in other plots of trend and seasonality, which only display the regular pattern. Due to the remainder section, the overall plot also displays a modest decrease during the time periods of recession where the outliers occurred.

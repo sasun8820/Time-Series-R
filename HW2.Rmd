@@ -1,0 +1,544 @@
+---
+title: "HW 2"
+author: "Jeonseo Lee (UID: 604-788-672)"
+date: "2023-01-30"
+output:
+  pdf_document: default
+  html_document: default
+
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(knitr)
+library(rmarkdown)
+```
+
+### 1) Problem 4.3 from Textbook a ###
+
+To derive the growth rate of both housing price and interest rates, I had taken the log and performed the first differentiation. By doing so, I was able to make both sets of data more covariance stationarity shaped. The original autoregression functions of house price and interest rates appear to be AR models, with ACFs steadily decreasing in lags (as more lags are incorporated,  correlation coefficients diminish) and PACF exhibiting a spike in the initial stage.
+
+However, once the logs are taken and differentiated, the house price now has the intial 6 phases (quarters) to be statistically significant in ACF and the first 3 lags in PACF, indiciating that the first 3 lags are unquestionably time-dependent. In case of the mortgage rate, with the exception of the first lag, every lag falls within the confidence interval (blue dashed line) and appears to have no autoregression (white noise), indicating that only the first lag is time dependent. 
+
+In case of the annual house price data, only the first lag seems to be statistically significant and time-dependent. This seems acceptable given that the first 3-6 lags that were time-depdent in the quarterly data match with the one-year long, the first lag, in the annual data.
+
+In case of the annual mortgage rate data, even the first lag does not appear to be statistically significant, falling within the dashed line. Every lag appears to be time independent. This is reasonable given that in the quarterly data, only the first quarter was above the line, indicating that the first lag of one year that is calculated annually may not capture the entire autoregression function. 
+
+```{R}
+data1 <- read.csv("USSTHPI.csv")
+#View(data1)
+housing <- ts(data1[,2], start=c(1975,1), freq=4)
+t = seq(1975, 2007, length=length(housing))
+# ACF & PACF of House Prices 
+library(tseries)
+library(forecast)
+library(fpp3)
+library(tseries)
+library(seasonal)
+library(fable)
+library(stats)
+library(tsibble)
+tsdisplay(housing, main="Housing Price")
+
+# ACF & PACF of House Price Growth 
+log_housing <- ts(log(data1[, 2]), start=c(1975,1), freq=4)
+log_housing2 <- diff(log_housing, differences =1)
+par(mfrow=c(2,1), mar=c(6,6,2,1), oma=c(0,0,2,0))
+tsdisplay(housing, main="Housing Price")
+tsdisplay(log_housing2, main="House Price Growth")
+                  
+data2 <- read.csv("MORTGAGE30US.csv")
+mortgage <- ts(data2[, 2], start=c(1975,1), freq=4)
+# ACF & PACF of Interest Rates 
+tsdisplay(mortgage, main="30 Years Mortgage Rate")
+
+# ACF & PACF of Interest Rates Growth 
+log_mortgage <- ts(log(data2[, 2]), start=c(1975,1), freq=4)
+log_mortgage2 <- diff(log_mortgage, differences =1)
+
+par(mfrow=c(2,1), mar=c(6,6,2,1), oma=c(0,0,2,0)) 
+tsdisplay(mortgage, main="Mortgage Rate")
+tsdisplay(log_mortgage2, main="Mortgage Rate Growth")
+
+
+# Annual Data
+data1_annual <- read.csv("USSTHPIannual.csv")
+housing_annual <- ts(data1_annual[,2], start=c(1975,1), freq=1)
+# ACF & PACF of House Prices 
+library(tsibble)
+tsdisplay(housing_annual, main="Housing Price")
+
+log_housing_annual <- ts(log(data1_annual[, 2]), start=c(1975,1), freq=1)
+log_housing2_annual <- diff(log_housing_annual, differences =1)
+par(mfrow=c(2,1), mar=c(6,6,2,1), oma=c(0,0,2,0))
+tsdisplay(housing, main="Housing Price")
+tsdisplay(log_housing2_annual, main="House Price Growth")
+
+par(mfrow=c(2,1), mar=c(6,6,2,1), oma=c(0,0,2,0))
+tsdisplay(log_housing2, main="Mortgage Rate")
+tsdisplay(log_housing2_annual, main="Mortgage Rate Growth")
+
+
+
+data2_annual <- read.csv("MORTGAGE30USannual.csv")
+mortgage_annual <- ts(data2[, 2], start=c(1975,1), freq=1)
+# ACF & PACF of Interest Rates 
+tsdisplay(mortgage_annual, main="30 Years Mortgage Rate")
+
+log_mortgage_annual <- ts(log(data2_annual[, 2]), start=c(1975,1), freq=1)
+log_mortgage2_annual <- diff(log_mortgage_annual, differences =1)
+
+par(mfrow=c(2,1), mar=c(6,6,2,1), oma=c(0,0,2,0))
+tsdisplay(log_mortgage2, main="Mortgage Rate")
+tsdisplay(log_mortgage2_annual, main="Mortgage Rate Growth")
+```
+
+
+### 2) Problem 4.4 from Textbook a ###
+
+```{R}
+# Run regression model of House growth model ~ lags 1, 2, 3, and 4
+# Quarterly Data Autoregressive Models
+lag1 <-log_housing2[-length(log_housing2)]
+lag2<-lag1[-length(lag1)]
+lag3<-lag2[-length(lag2)]
+lag4<-lag3[-length(lag3)]
+lag1<-append(c(NA), lag1)
+lag2<-append(c(NA, NA), lag2)
+lag3<-append(c(NA, NA, NA), lag3)
+lag4<-append(c(NA, NA, NA, NA), lag4)
+
+model <- lm(log_housing2 ~ lag1+lag2+lag3+lag4)
+summary(model)
+
+# For quarterly data, lag3 appears to be the best model 
+best_model <- lm(log_housing2 ~ lag1+lag2+lag3) 
+library(vars)
+VARselect(log_housing2, lag.max=4) 
+
+# Annual Data Autoregressive Models 
+lag1_annual <-log_housing2_annual[-length(log_housing2_annual)]
+lag2_annual<-lag1_annual[-length(lag1_annual)]
+lag3_annual<-lag2_annual[-length(lag2_annual)]
+lag4_annual<-lag3_annual[-length(lag3_annual)]
+lag1_annual <-append(c(NA), lag1_annual)
+lag2_annual<-append(c(NA, NA), lag2_annual)
+lag3_annual<-append(c(NA, NA, NA), lag3_annual)
+lag4_annual<-append(c(NA, NA, NA, NA), lag4_annual)
+
+model_annual <- lm(log_housing2_annual ~ lag1_annual + lag2_annual + lag3_annual + lag4_annual)
+summary(model_annual)
+
+# For annual data, lag1 or 2 appears to be the best model 
+best_model_annual <- lm(log_housing2_annual ~ lag1_annual)
+VARselect(log_housing2_annual, lag.max=4) 
+
+# Try to see if our model has done removing all the residuals 
+#library(forecast)
+tsdisplay(best_model$residuals) 
+tsdisplay(best_model_annual$residuals)
+```
+
+```{R}
+# Choose your favorite model and implement a recursive and a rolling estimation scheme.
+# It is incorrect to use AIC and BIC to compare the quarterly model with the annual models, because their dependent variables are different (one is on a quarterly frequency, and one is on an annual frequency).
+# Thus, I'd choose a quarterly data, as its AIC from the VARselect test is the lowest. 
+
+## Recursive Scheme for quarterly data ##
+n <- length(log_housing2) * (2/3) # our train set 
+coefficients <- c()
+df1 <- data.frame(log_housing2, lag1, lag2, lag3, lag4) 
+
+for (i in n:length(log_housing2)) {
+     df2 <- df1[1:i, ] # new data listed in a data frame (1부터 끝까지 training을 하게 됨)
+     model <- lm(log_housing2 ~ ., data = df2) # model newly made based on a new data 
+     coefficients <- rbind(coefficients, model$coefficients)
+}
+coefficients # Number of coefficients refer to the number of test set. (After using training data and running through the test data set, at each iteration, the coefficients gets saved in the variable, coefficient)
+
+# Plot the recursive scheme 
+summary(model)
+wow <- data.frame(points = 1:nrow(coefficients),
+          intercept = coefficients[ ,1], 
+                   lag1 = coefficients[, 2],
+                   lag2 = coefficients[, 3],
+                   lag3 = coefficients[, 4],
+                   lag4 = coefficients[, 5])
+
+library(ggplot2)
+library(reshape)
+d = melt(wow, id.vars="points")
+
+ggplot(d, aes(points,
+              value,
+              col = variable))+
+     geom_point() +
+     geom_line() +
+     ggtitle("Coefficient Changes over Time (Recursive)")+
+     theme(plot.title = element_text(hjust = 0.5))+
+     labs(y="Y-values", x="Points")
+```
+We discovered that, unlike the first 30 data points, the lags appeared to vary after 30 iterations. Lag 4 is the only one whose estimated effect on the house price is decreasing, whereas the other lags' estimated effects appear to be increasing. It is also plausible considering that the model that best fits our quarterly data includes just the first three lags and the fourth lag is statistically insignificant.
+
+```{r}
+## Rolling Scheme for quarterly data ##
+coefficients2 <- c()
+
+for (i in 0:(length(log_housing2) - n)) { # fixed as 2/3 (n) but away  from length - 2/3(n)
+     df2 <- df1[1 +i : n+i, ]
+     model <- lm(log_housing2 ~ ., data = df2)
+     coefficients2 <- rbind(coefficients2, model$coefficients)
+}
+coefficients2
+
+# Plot the rolling scheme 
+wow2 <- data.frame(points = 1:nrow(coefficients2),
+          intercept = coefficients2[ ,1], 
+                   lag1 = coefficients2[, 2],
+                   lag2 = coefficients2[, 3],
+                   lag3 = coefficients2[, 4],
+                   lag4 = coefficients2[, 5])
+
+d2 = melt(wow2, id.vars="points")
+
+ggplot(d2, aes(points,
+              value,
+              col = variable))+
+     geom_point() +
+     geom_line() +
+     ggtitle("Coefficient Changes over Time (Rolling)")+
+     theme(plot.title = element_text(hjust = 0.5))+
+     labs(y="Y-values", x="Points")
+```
+Compared to the recursive scheme, rolling scheme has exhibited a more variable pattern, although it has remained rather stable until 28 data points. Since then, the projected effect of lag 4 has decreased significantly, while the impact of lags 1, 2, and 3 on the housing price value has increased. It is also plausible considering that the model that best fits our quarterly data includes just the first three lags and the fourth lag is statistically insignificant.
+
+### 3) Problem 4.8 from Textbook a ###
+
+```{R}
+#install.packages("xlsx")
+library(xlsx)
+gdp_data = read.xlsx("P4_8.xlsx", sheetIndex =1)
+colnames(gdp_data) = c("DATE", "RGDP", "FRGDP")
+gdp = ts(gdp_data$RGDP, start=c(1969, 1), end=c(2006,4), frequency=4)
+fgdp = ts(gdp_data$FRGDP, start=c(1969, 1), end=c(2006,4), frequency=4)
+f_error = ts(gdp-fgdp, start=c(1969,1), end=c(2006,4), frequency=4)
+
+# Plot forecast errors 
+plot(f_error, ylab="Forecast Errors", main = "Forecast Errors")
+abline(h=0, col="red")
+tsdisplay(f_error)
+```
+Since the forecast errors (as displayed in its pacf) do not exhibit any recurring patterns over time, it is verified that the forecast errors is unbiased (random) and its expected value is near 0. 
+
+```{R}
+# Run the error regressions on several lags 
+flag1 <-f_error[-length(f_error)]
+flag2 <-flag1[-length(flag1)]
+flag3 <-flag2[-length(flag2)]
+flag4 <-flag3[-length(flag3)]
+
+flag1 = append(c(NA), flag1)
+flag2 = append(c(NA, NA), flag2)
+flag3 = append(c(NA, NA, NA), flag3)
+flag4 = append(c(NA, NA, NA, NA), flag4)
+
+f_regression = lm(f_error ~ flag1+flag2+flag3+flag4)
+summary(f_regression) # No lag seems statistically significant 
+# library(vars)
+VARselect(f_error, lag.max =4) 
+```
+None of the lag appear to be statistically significant, as indicated by the original forecast error's pacf values. This shows their random structure in pattern and the absence of autocorrelation coefficients to take note of.
+
+```{R}
+# Run the F-test
+# H0: β0, β1, β2..and .βk =0 vs. H1: β0, β1, β2..or .β k ≠0
+#install.packages("car")
+library(car)
+linearHypothesis(f_regression, c("flag1=0", "flag2=0", "flag3=0", "flag4=0"))
+```
+As suggested by the result of the F-test, the restricted model (Model 2) that includes all lags has a very high p-value (0.5339 > 0.005), which fails to reject the null hypothesis that there are no autocorrelation coefficients of the forecast error lags. This also leads to the conclusion that our forecast error could not have been predicted from the past (lags). 
+
+### 4) Problem 6.2 from Textbook c ###
+The plastics data set consists of the monthly sales (in thousands) of product A for a plastics manufacturer for five years.
+
+**a) Plot the time series of sales of product A. Can you identify seasonal fluctuations and/or a trend-cycle?**
+Trend is upward, and there appears to be a clear sign of seasonality, since the increase began in March, reached its peak in mid-summer, August, and then plummeted dramatically in the winter.
+```{R}
+library(fpp2)
+plst <- plastics
+View(plst)
+
+autoplot(plastics) +
+  xlab("Year") + ylab("Sales") +
+  ggtitle("Monthly Sales of Product A for a plastics manufacturer")
+
+ggseasonplot(plastics) +
+  xlab("Year") + ylab("Sales") +
+  ggtitle("Monthly Sales of Product A for a plastics manufacturer")
+```
+
+**b) Use a classical multiplicative decomposition to calculate the trend-cycle and seasonal indices.**
+```{R}
+#Multiplicative Decomposition
+plastics %>% decompose(type="multiplicative") %>% 
+  autoplot() + xlab("Year") +
+  ggtitle("Classical Multiplicative Decomposition of Monthly Sales of Product A")
+```
+
+**c) Do the results support the graphical interpretation from part a?**
+
+First, we know there is a cycle because its seasonality and residual (cycle) amplitude are comparable once it has been decomposed. Overall, the results accurately reflect the graphical interpretation from part a. The trend graph demonstrates an upward tendency over time. The seasonal graph also clearly demonstrates seasonality, with yearly peaks occurring around summertime.
+
+**d) Compute and plot the seasonally adjusted data.**
+```{R}
+# Multiplicative seasonally Adjusted: Data - Seasonality 
+dcmp_plst = decompose(plst, "multiplicative")
+season_plst = dcmp_plst$seasonal
+data <- ts(plst, frequency=12)
+seasonally_adjusted = data/season_plst
+autoplot(seasonally_adjusted)
+
+fit <- plastics %>% decompose(type="multiplicative")
+  autoplot(plastics, series="Data") +
+  autolayer(trendcycle(fit), series="Trend") +
+  autolayer(seasadj(fit), series="Seasonally Adjusted") +
+  xlab("Year") + ylab("Sales") +
+  ggtitle("Monthly Sales of Product A for a plastics manufacturer") +
+  scale_color_manual(values=c("gray", "blue", "red"), 
+                     breaks=c("Data", "Seasonally Adjusted", "Trend"))
+```
+
+**e) Change one observation to be an outlier (e.g., add 500 to one observation), and recompute the seasonally adjusted data. What is the effect of the outlier?**
+
+I imposed the outlier at the beginning of the phase (10) and this has altered the seasonality over time, resulting in a significant peak. In addition, because of this one outlier, the overall residuals now appear to have bigger amplitudes. However, with the exception of the outlier, it did not significantly disrupt the overall trend of a progressive increase.
+```{r}
+plst2 = plst
+plst2[10] <- plst2[10] + 500
+
+par(mfrow=c(2,1), mar=c(6,6,2,1), oma=c(0,0,2,0))
+dcmp_plst = decompose(plst, "multiplicative")
+season_plst = dcmp_plst$seasonal
+data <- ts(plst, frequency=12)
+seasonally_adjusted = data/season_plst
+autoplot(seasonally_adjusted)
+
+dcmp_plst2 = decompose(plst2, "multiplicative")
+season_plst2 = dcmp_plst2$seasonal
+data <- ts(plst2, frequency=12)
+seasonally_adjusted = data/season_plst2
+autoplot(seasonally_adjusted)
+
+fit <- plst %>% decompose(type="multiplicative")
+  autoplot(plastics, series="Data") +
+  autolayer(trendcycle(fit), series="Trend") +
+  autolayer(seasadj(fit), series="Seasonally Adjusted") +
+  xlab("Year") + ylab("Sales") +
+  ggtitle("Monthly Sales of Product A for a plastics manufacturer") +
+  scale_color_manual(values=c("gray", "blue", "red"), 
+                     breaks=c("Data", "Seasonally Adjusted", "Trend"))
+```
+
+**f) Does it make any difference if the outlier is near the end rather than in the middle of the time series?**
+Having an outlier towards the end has fewer influence on the general seasonality and residuals of the time series, whereas a peak at the end produces a more pronounced upward trend. Outliers at the beginning (executed in earlier #e) and outliers at other locations affect trends and seasonality to a little degree, but not substantially.
+
+```{R}
+# Outlier in the middle 
+plst3 = plst
+plst3[30] <- plst3[30] + 500
+
+par(mfrow=c(3,1), mar=c(6,6,2,1), oma=c(0,0,2,0))
+dcmp_plst = decompose(plst, "multiplicative")
+season_plst = dcmp_plst$seasonal
+data<- ts(plst, frequency=12)
+seasonally_adjusted = data/season_plst
+autoplot(seasonally_adjusted)
+
+dcmp_plst3 = decompose(plst3, "multiplicative")
+season_plst3 = dcmp_plst3$seasonal
+data3 <- ts(plst3, frequency=12)
+seasonally_adjusted = data3/season_plst3
+autoplot(seasonally_adjusted)
+
+# Outlier in the end
+plst4 = plst
+plst4[55] <- plst4[30] + 500
+
+dcmp_plst4 = decompose(plst4, "multiplicative")
+season_plst4 = dcmp_plst4$seasonal
+data4 <- ts(plst4, frequency=12)
+seasonally_adjusted = data4/season_plst4
+autoplot(seasonally_adjusted)
+```
+
+### 5) Problem 6.6 from Textbook c ###
+
+**a) Use an STL decomposition to calculate the trend-cycle and seasonal indices. (Experiment with having fixed or changing seasonality.)**
+```{R}
+#install.packages("fma")
+library(fma)
+bsq <- bricksq # Australian quarterly clay brick production, 1956-1994
+
+# Changing seasonality - smaller values allow for more rapid changes and greater flexibility
+bsq %>% 
+     stl(bsq, s.window = 11, s.degree=1) %>% 
+     autoplot()
+# Fixed seasonality
+bsq  %>% 
+     stl(bsq, s.window = "periodic", s.degree=1) %>% 
+     autoplot()
+```
+
+**b) Compute and plot the seasonally adjusted data.**
+```{R}
+brick = bsq %>%
+  stl(t.window=30, s.window="periodic", robust=FALSE) %>% 
+  seasadj() %>%
+  autoplot()
+brick
+```
+
+**c) Use a naïve method to produce forecasts of the seasonally adjusted data. **
+```{R}
+bsq_fc <- bsq %>%
+     stl(t.window=30, s.window="periodic", robust=FALSE) %>% 
+     seasadj() %>%
+     naive() %>% 
+     autoplot() +
+     ylab("Brick Production") +
+     ggtitle("Naive Forecasts of Seasonally Adjusted Data")
+bsq_fc
+```
+
+**d) Use stlf() to reseasonalise the results, giving forecasts for the original data. **
+```{R}
+#library(forecast)
+bsq_fc2 <- stlf(bsq, method='naive') 
+predict(bsq_fc2, 10)
+```
+
+**e) Do the residuals look uncorrelated? **
+Lags 4 and 8 appear to be autocorrelated, which makes sense given the data's quarterly seasonality.
+```{R}
+tsdisplay(bsq_fc2$residuals)
+```
+
+**f) Repeat with a robust STL decomposition. Does it make much difference? **
+Using robust fitting did not make much difference from the orignial STL decomposition without it. 
+```{R}
+bsq %>% 
+     stl(s.window = 11, s.degree=1, robust=TRUE) %>% 
+     autoplot() 
+```
+
+**g) Compare forecasts from stlf() with those from snaive(), using a test set comprising the last 2 years of data. Which is better?**
+The Stif function more closely resembles the original data's overall shape of trend and seasonality than the snaive function.
+
+```{r}
+train_set = window(bsq, end=c(1992,3))
+test_set = tail(bsq,8)
+
+# forecasts from stlf()
+bsq_naive <-snaive(train_set)
+
+# forecasts from snaive()
+bsq_stlf <-stlf(train_set)
+
+# Plot the forecasts and compare 
+fc1 = predict(bsq_naive, 10) 
+fc2 = predict(bsq_stlf, 10) 
+
+autoplot(bsq, series = "Original data") +
+  geom_line(size = 1) +
+  autolayer(fc1, PI = FALSE, size = 1,
+            series = "snaive") +
+  autolayer(fc2, PI = FALSE, size = 1,
+            series = "stlf") +
+  scale_color_manual(values = c("gray50", "blue", "red"),
+                     breaks = c("Original data", "snaive", "stlf")) +
+  scale_x_continuous(limits = c(1990, 1994.5)) +
+  ggtitle("Forecast Comparision: STLF vs. Snaive Functions") 
+```
+
+### 6) Problem 6.7 from Textbook c ###
+
+```{r}
+library(fpp2)
+w_data = writing 
+head(w_data,3)
+
+tsdisplay(w_data)
+autoplot(w_data)
+ggsubseriesplot(w_data, main = NULL) 
+```
+There is an increasing trend and high seasonality around lag 12, which suggests that there is meaningful implication with the yearly frequency in 12 months. In addition, as indicated by the subseriesplot function, there is a monthly pattern of increasing sales towards the end of the month; however, there is a significant decrease in writing sales during the month of August, which could be indicative of the impact of summer break or the weather on sales in general.
+
+```{r}
+# Split into a 80:20 ratio on training & test data 
+w_training = window(w_data, start=1968, end=c(1975,12))
+w_test = window(w_data, start = 1976)
+# library(caret)
+#library(forecast)
+# naive_test = stlf(w_training,t.window=13,lambda = BoxCox.lambda(w_training),s.window="periodic",robust=TRUE,method="naive",h=length(w_test))
+# accuracy(naive_test, w_test)
+# 
+# rwdrift_test = stlf(w_training,t.window=13,lambda = BoxCox.lambda(w_training),s.window="periodic",robust=TRUE,method="rwdrift", h=length(w_test))
+# accuracy(rwdrift_test, w_test)
+```
+
+In contrast to the Naive method, the RW drift method forecasts variations in increases and decreases over time. Since our data fluctuates significantly over time, RW drift is a more suitable method for forecasting than the naïve method.
+
+```{r}
+library(ggplot2)
+qplot(w_data, xlab="Writing Sales")
+```
+
+According to the qplot, the distribution of writing sales resembles a normal distribution without excessive variable asymmetry; therefore, applying boxcox.lambda arugment to make it a normal distribution is unnecessary and will not result in significant variations.
+
+```{R}
+stlf(w_data, method = c("rwdrift"),  s.window = "periodic", robust = TRUE) %>% 
+     autoplot() +
+     ggtitle("Rwdrift without Box-Cox Transformation")
+
+stlf(w_data, method = c("rwdrift"),  s.window = "periodic", robust = TRUE, lambda = "auto") %>% 
+     autoplot() +
+     ggtitle("Rwdrift with Box-Cox Transformation")
+```
+
+### 7) Problem 6.8 from Textbook c ###
+
+```{r}
+#library(fpp2)
+f_data = fancy 
+
+tsdisplay(f_data)
+autoplot(f_data)
+ggsubseriesplot(f_data, main = NULL) 
+```
+There is an increasing trend and high seasonality around lag 12, which suggests that there is meaningful implication with the yearly frequency in 12 months. In addition, as seen by the subseriesplot function, there is generally a monthly pattern of growth towards the end of the month. Unlike the earlier problem #6, however, there appears to be a significant spike in December, which suggests that many holidays are occurring.
+
+```{r}
+# Split into a 80:20 ratio on training & test data
+f_training = head(f_data, 67)
+f_test = tail(f_data, 17)
+# naive_test2 = stlf(f_training,t.window=13,lambda = BoxCox.lambda(f_training),s.window="periodic",robust=TRUE,method="naive", h=length(f_test))
+# accuracy(naive_test2,f_test)
+# 
+# rwdrift_test2 = stlf(f_training,t.window=13,lambda = BoxCox.lambda(f_training),s.window="periodic",robust=TRUE,method="rwdrift",h=length(f_test))
+# accuracy(rwdrift_test2,f_test)
+```
+
+In contrast to the Naive method, the RW drift method forecasts variations in increases and decreases over time. Since our data fluctuates significantly over time, RW drift is a more suitable method for forecasting than the naïve method.
+
+```{r}
+library(ggplot2)
+qplot(f_data, xlab="Fancy")
+```
+
+According to the qplot, the distribution of the fancy series cannot be viewed as a normal distribution and rahter has too much variable asymmetry; hence, applying the boxcox.lambda adjustment will help to transform it into a normal distribution.
+```{r}
+stlf(f_data, method = c("rwdrift"),  s.window = "periodic", robust = TRUE) %>% 
+     autoplot() +
+     ggtitle("Rwdrift Without Box-Cox Transformation)")
+stlf(f_data, method = c("rwdrift"),  s.window = "periodic", robust = TRUE, lambda = "auto") %>% 
+     autoplot() + 
+     ggtitle("Rwdrift With Box-Cox Transformation)")
+```

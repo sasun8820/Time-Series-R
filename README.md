@@ -1,2 +1,2 @@
 # Time-Series-R
-Projects on time-series data from UCLA coursework 
+Projects and assignments on time-series data from UCLA coursework 

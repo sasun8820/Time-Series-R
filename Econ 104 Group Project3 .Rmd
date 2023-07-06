@@ -1,0 +1,534 @@
+---
+title: 'Econ 104 Group Project #3'
+author: 
+- "Jeonseo Lee (UID:604-788-672),"
+- "Rostam Kianian (UID: 605-699-858),"
+- "Kimia Karaminejad ranjbar (UID: 405-427-057)," 
+- "Kwan Lok Mak (UID: 305-789-681)"
+date: "2023-03-16"
+output:
+  pdf_document:
+    toc: yes
+    toc_depth: 2
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(ggplot2)
+library(forecast)
+library(vars)
+library(corrr)
+library(corrplot)
+library(car)
+library(AER)
+library(broom)
+library(PoEdata)
+library(leaps)
+library(tidyverse)
+library(caret)
+library(MASS)
+library(dynlm)
+library(plm) # Linear Models for Panel Data library(AER)
+library(PoEdata)
+library(AER)
+library(gplots)
+library(corrplot)
+library(RColorBrewer)
+```
+
+# I. Panel Data Models #
+
+## 1. Briefly discuss your data and economic/finance/business question you are trying to answer with your model. ##
+
+We have downloaded the panel dataset, OECDGas, from the AER library, which measures gasoline consumption in 18 OECD countries between the years 1960 and 1978. From this, we would like to investigate if other factors or predictors, besides nations and time stamps, such as real per-capita income, gasoline price, and stock of cars per-capita, influence gasoline consumption differently or identically across the different countries and time stamps. 
+
+## 2. Provide a descriptive analysis of your variables. This should include histograms and fitted distributions, correlation plot, boxplots, scatterplots, and statistical summaries (e.g., the five-number summary). All figures must include comments. ##
+
+**a) Histograms & Fitted Values **
+
+Besides the variables, time and countries (individuals), we have fitted the historgram for the following four predictors to our panel data: gas consumption, logarithm of per capita income, logarithm of gas price, and logarithm of car stocks. One thing to note of is that those four variables in the original data set are computed in logarithm for the purpose of normalizing the data, as they may have extremely big numbers and hence a substantial, out-of-scale disparity over the individuals. Hence, the range may appear indeterminate; however, we can observe that, with the exception of gas consumption, the other three predictors are skewed to the left, indicating that the majority of income per capita, gas price, and automobile stocks are observed in their greater proportions. On the other hand, gas consumption stays marginally lower across its whole range.
+
+```{R}
+data("OECDGas")
+OECDgas = OECDGas
+
+# Logarithm of Gas consumption 
+gas_consumption = OECDgas[, 3]
+d1 <- density(gas_consumption, cut = 0)
+hist(gas_consumption,prob = TRUE, breaks = 10, main="Histogram of Gas Consumption", col="skyblue4")
+lines(d1, col = 2, lwd=2)
+
+# Logarithm of Income per Capita 
+income = OECDgas[, 4]
+d2 <- density(income, cut = 0)
+hist(income, prob = TRUE, breaks = 10, main="Histogram of Logarithm of Income per Capita", col="skyblue4")
+lines(d2, col = 2, lwd=2)
+
+# Logarithm of Gas Price  
+Gprice = OECDgas[, 5]
+d3 <- density(Gprice, cut = 0)
+hist(Gprice,prob = TRUE,breaks = 10, main="Histogram of Logarithm of Gas Price", col="skyblue4")
+lines(d3, col = 2, lwd=2)
+
+# Logarithm of # of Car Stocks
+Carstock = OECDgas[, 6]
+d4 <- density(Carstock, cut = 0)
+hist(Carstock,prob = TRUE,breaks = 10, main="Histogram of Logarithm of # of Car Stocks", col="skyblue4")
+lines(d4, col = 2, lwd=2)
+
+```
+
+**b) Correlation Plots **
+
+Except for the country variable, which does not have a numeric value, correlation plots have been implemented for the remaining variables. There is a relatively strong negative correlation between the number of car stocks and gas consumption as -0.69. In addition, correlation between the number of car stocks and income per capita is also worth noting as 0.55 (positive corrleation).
+
+```{r}
+M = cor(OECDgas[ ,2:6])
+corrplot(M, method = 'number',
+         addCoef.col = 1,
+         number.cex = 0.9,
+         tl.cex = 0.9) # colorful number
+```
+
+**c) Boxplots **
+
+As the time and country variables are already have fixed rangees, we've created boxplots for the remaining four predictors. As we've already noticed from the skewed histograms, it is not surprising to observe several outliers in their data. he median gas consumption logarithm is 4, the median income per capita is -6, the median gas price is -0.5, and the median automobile inventory is -9.
+
+```{R}
+boxplot(OECDgas[,3], main="Boxplot: Gas consumption", ylab = "Logarithms")
+boxplot(OECDgas[,4], main="Boxplot: Income per Capita ", ylab = "Logarithms")
+boxplot(OECDgas[,5], main="Boxplot: Gas Price", ylab = "Logarithms")
+boxplot(OECDgas[,6], main="Boxplot: Car Stocks", ylab = "Logarithms")
+```
+
+**d) Scatter Plots **
+
+By utilizing a variety of models across different time periods and countries, we will investigate the effect of income per capita, gas price, and the number of car stocks on gas consumption. Thus, in addition to the scatterplots with year as the x-axis and four other variables, we've also created three scatterplots, this time with gas consumption, which will be our response variable, and other three variables. In a similar manner with correlation plots, income per capita and car stocks have a negative relationship with gas consumption. Gas consumption appear to be at random along with gas price.
+
+```{R}
+# Scatter Plot with Year 
+plot(x = OECDgas[ ,2], y = OECDgas[,3], xlab="Year", ylab="Gas Consumption", main="Scatter Plot", col="blue",
+     lwd=2)
+
+plot(x = OECDgas[ ,2], y = OECDgas[,4], xlab="Year", ylab="Income per Capita", main="Scatter Plot", col="blue",
+     lwd=2)
+
+plot(x = OECDgas[ ,2], y = OECDgas[,5], xlab="Year", ylab="Gas Price", main="Scatter Plot", col="blue",
+     lwd=2)
+
+plot(x = OECDgas[ ,2], y = OECDgas[,6], xlab="Year", ylab="Car Stocks", main="Scatter Plot", col="blue",
+     lwd=2)
+
+# Scatter Plot with Gas Consumption 
+plot(x = OECDgas[ ,3], y = OECDgas[,4], xlab="Gas Consumption", ylab="Income per Capita", main="Scatter Plot", col="blue",
+     lwd=2)
+
+plot(x = OECDgas[ ,3], y = OECDgas[,5], xlab="Gas Consumption", ylab="Gas Price", main="Scatter Plot", col="blue",
+     lwd=2)
+
+plot(x = OECDgas[ ,3], y = OECDgas[,6], xlab="Gas Consumption", ylab="Car Stocks", main="Scatter Plot", col="blue",
+     lwd=2)
+```
+
+**e) Statistical Summaries **
+
+There is no numerical insight to be gleaned from the fact that the number of countries is always 19 all acorss the data. The years 1960 to 1978 are being measured by the year variables, hence the median is 1969. Gas consumption's logarthmic median values are approximately 4, with minimum and maximum values of 3.3 and 6.1, respectively. The median logarithmic income is approximately -6, the median logarithmic gas price is -0.38, and the median logarithmic number of cars in stock is -8.6. However, as previously indicated, the data itself has a converted, logarithmic values for those four variables; therefore, it is impossible to determine the exact numeric values of the four variables. But, using these normalized values, we can still estimate the IQR and outliers from their amplitudes.
+
+```{r}
+summary(OECDgas)
+```
+
+## 3. Fit the three models below, and identify which model is your preferred one and why. Make sure to include effects plots, statistical diagnostics, etc., to support your conclusion, and to comment on your findings. ##
+
+**1) Pooled Models**
+
+There appears to be individual differences in gas consumption across different countries and time periods, putting the pooled model at risk compared to the other two models that could possibly explain the individual differences better. All three predictors, income, price, and cars, are statistically significant, making it a persuasive model with high explanatory power and a high R2.
+
+```{R}
+# Pooled
+
+# 342 observations with 6 variables 
+dim(OECDgas)
+
+# Convert the data to a panel data structure where i = country, and t = year
+pd <- pdata.frame(OECDgas, index=c("country", "year"))
+head(pd)
+
+# Estimate the Pooled OLS
+mreg.pooled <- plm(gas~income+price+cars,
+  model="pooling", data=pd)
+summary(mreg.pooled)
+
+# Estimate the Pooled OLS w/ Cluster-robust standard errors
+coeftest(mreg.pooled, vcov=vcovHC(mreg.pooled,
+                    type="HC0",cluster="group"))
+
+# Heterogeneity across time: 
+plotmeans(gas ~ year, data = pd) # Total # of countries = 18 countries
+
+# Heterogeneity across countries: 
+plotmeans(gas ~ country, data = pd) # Total # of years = 19 years (1960-1978)
+```
+
+**2) Fixed Models**
+
+Under the fixed models, there are two possible approaches: 1) dummy variable approach 2) within approach. As our model does not contain a large number of predictors, the dummy variable approach is also acceptable. However, to precisely compare the performance of the various models, we will only use the dummy variable approach to display certain plots illustrating the individual differences, but will otherwise stick to the within approach. As a conclusion through PFtest, we would prefer a fixed effect model to the pooled model, which has a right intuition as we've observed in the prior question that there exists heteroskedasticity across different individuals (countries).
+
+```{R}
+# Dummay Variable Model to display the plots 
+mreg.fixed10 <- lm(gas~income+price+cars+factor(country)-1,
+                  data=OECDgas)
+summary(mreg.fixed10)
+yhat <- mreg.fixed10$fitted
+
+# Individual differences in the price of cars
+scatterplot(yhat ~ OECDgas$price| OECDgas$country,
+            xlab ="Price of Gas", ylab ="yhat",
+            boxplots = FALSE,smooth = FALSE)
+abline(lm(OECDgas$gas~OECDgas$price),lwd=3, col="black")
+
+# Individual differences in the # of car stocks 
+scatterplot(yhat ~ OECDgas$cars| OECDgas$country,
+            xlab ="# of Car Stocks", ylab ="yhat",
+            boxplots = FALSE,smooth = FALSE)
+abline(lm(OECDgas$gas~OECDgas$cars),lwd=3, col="black")
+
+# Individual differences in income 
+scatterplot(yhat ~ OECDgas$income| OECDgas$country,
+            xlab ="Income", ylab ="yhat",
+            boxplots = FALSE,smooth = FALSE)
+abline(lm(OECDgas$gas~OECDgas$income),lwd=3, col="black")
+
+
+# 2) Within Model
+mreg.within <-plm(gas~income+price+cars,
+  model="within", data=pd)
+summary(mreg.within)
+
+# Fixed effects/ constants for each country 
+fixef(mreg.within)
+
+# Test between the pooled and fixed models 
+pFtest(mreg.within, mreg.pooled) # small p-value: we choose the Fixed model > the Pooled model 
+```
+
+**3) Random Models**
+
+As we reject the null from phtest (Hausman) with a low p-value, we've concluded that the fixed model is the preferred model to the random model. 
+
+```{R}
+# Random Effects
+mreg.random <-plm(gas~income+price+cars,
+  model="random", data=pd)
+summary(mreg.random)
+
+# Test between the fixed model and random model
+phtest(mreg.within, mreg.random) # small p-value) Best model: Fixed Model
+```
+
+# II. Qualitative Dependent Variable Models #
+
+## 1. Briefly discuss your data and economic/finance/business question you are trying to answer with your model. ##
+
+For this part of the project, we are going to be using the 2022 Medical Students data set found from Kaggle. The binomial response variable we are using is distress, which has two levels: 1 (a medical student under psychological distress) and 0 (a medical student not under psychological distress). The variables we will be using to predict what factors affect whether a medical student is under distress is age, year, hoursofstudying, jsatisfaction, motivscore, and anxiety. The age variable is a numeric variable indicating participant’s age in years. The year variable indicates the year of study of the participant. The hoursofstudy indicates the hours studied by the participant per week. The jsatisfaction is the job satisfaction score by the participant. Motivscore represents the academic motivation score of the participant. The anxiety variable represents the State-Trait Anxiety Inventory scale of the participant. Using this data, we will be running various models (linear probability, probit, and logit) to determine the factors that cause a student to be in distress or not.
+
+## 2. Provide a descriptive analysis of your variables. This should include histograms and fitted distributions, correlation plot, boxplots, scatterplots, and statistical summaries (e.g., the five-number summary). All figures must include comments. ##
+
+```{R}
+data2 = read.csv("2022MedicalStudent.csv")
+colnames(data2)
+
+med = data2[, c(2,3,8,10,11,14,17)]
+colnames(med) = c("age", "year", "hoursofstudying", "distress", "jsatisfaction", "motivscore", "anxiety")
+
+summary(med)
+
+# 0 is our referecne group 
+sum(med$distress==0)
+sum(med$distress==1)
+
+# Baseline: 77.5% 
+687/(687+199) 
+```
+
+**a) Histograms & Fitted Values **
+
+We've fitted the histogram for all the predictors and our binary response variable. Variables, age of the medical students, years of study, their hours of studying, and anxiety level appear to be skewed right, indicating that their frequencies are less prevalent at their larger values. In contrast, such variables as job satisfaction and motivation score are more prevalent in greater values. Our binary response variable, which indicates whether medical students experience mental distress or not, was something to take note of. As expected based on its binary nature, its frequencies are either shown as 0 or 1.
+
+```{r}
+# Age 
+age = med[, 1]
+age1 <- density(age, cut = 0)
+hist(age, prob = TRUE, breaks = 10, main="Age", col="skyblue4", xlab = "Age")
+lines(age1, col = 2, lwd=2)
+
+# Year of Study
+year = med[, 2]
+year1 <- density(year, cut = 0)
+hist(year, prob = TRUE, breaks = 10, main="Year of Study", col="skyblue4", xlab="Year of Study")
+lines(year1, col = 2, lwd=2)
+
+# Hours of Studying
+hrs = med[, 3]
+hrs1 <- density(hrs, cut = 0)
+hist(hrs, prob = TRUE, breaks = 10, main="Hours of Studying", col="skyblue4", xlab="Hours of Studying")
+lines(hrs1, col = 2, lwd=2)
+
+# Distress (Binary Response Variable)
+distress = med[, 4]
+distress1 <- density(distress, cut = 0)
+hist(distress, prob = TRUE, breaks = 10, main="Distress (Binary Response)", col="skyblue4", xlab="Distress")
+lines(distress1, col = 2, lwd=2)
+
+# Job Satisfaction
+js = med[, 5]
+js1 <- density(js, cut = 0)
+hist(js, prob = TRUE, breaks = 10, main="Job Satisfaction Level", col="skyblue4", xlab="Job Satisfaction")
+lines(js1, col = 2, lwd=2)
+
+# Motivation Score
+ms = med[, 6]
+ms1 <- density(ms, cut = 0)
+hist(ms, prob = TRUE, breaks = 10, main="Motivation Score", col="skyblue4", xlab="Motivation Score")
+lines(ms1, col = 2, lwd=2)
+
+# Anxiety Level
+al = med[, 7]
+al1 <- density(al, cut = 0)
+hist(al, prob = TRUE, breaks = 10, main="Anxiety Level", col="skyblue4", xlab="Anxiety Level")
+lines(al1, col = 2, lwd=2)
+```
+
+**b) Corrleation Plots **
+
+The correlation between the variables are shown as below. Apart for the correlation between years of study and hours of studying, which has a relatively significant negative correlation of -0.52, there appears to be no strong correlations.
+
+```{r}
+M = cor(med[ ,1:7])
+corrplot(M, method = 'number',
+         addCoef.col = 1,
+         number.cex = 0.7,
+         tl.cex = 0.7) # colorful number
+```
+
+**c) Boxplots **
+
+We took out the boxplot for the response variable because its outliers are no longer important due to its binary nature. We can observe that the variables, age of medical students and job satistaction, have a greater range, increasing the likelihood of their outliers.
+
+```{r}
+boxplot(med[,1], main="Boxplot: Age")
+boxplot(med[,2], main="Boxplot: Year of Study")
+boxplot(med[,3], main="Boxplot: Hours of Studying")
+boxplot(med[,5], main="Boxplot: Job Satisfaction")
+boxplot(med[,6], main="Boxplot: Motivation Score")
+boxplot(med[,7], main="Boxplot: Anxiety Level")
+```
+
+**d) Scatter plots **
+
+We primarily fitted the scatterplots between our binary response variable (y= distress) and respective predictors (x), as we are primarily interested in how each predictor influences the binary nature of response variables. By comparing the number of collections per observation for 0 and 1, we may determine the general dispersion of the y observations. In addition, we have added two more scatter plots in which some variables might have a correlation toward each other. (Year of Study & Hours of Studying and Job Satisfaction & Anxiety Level)
+
+```{r}
+# Scatter Plot of Binary Variable (Y = Distress) with its predictors 
+plot(x = med[ ,4], y = med[,1], xlab="Distress", ylab="Age", main="Scatter Plot", col="blue",
+     lwd=2)
+
+plot(x = med[ ,4], y = med[,2], xlab="Distress", ylab="Year of Study", main="Scatter Plot", col="blue",
+     lwd=2)
+
+plot(x = med[ ,4], y = med[,3], xlab="Distress", ylab="Hours of Studying", main="Scatter Plot", col="blue",
+     lwd=2)
+
+plot(x = med[ ,4], y = med[,5], xlab="Distress", ylab="Job Satisfaction", main="Scatter Plot", col="blue",
+     lwd=2)
+
+plot(x = med[ ,4], y = med[,6], xlab="Distress", ylab="Motivation Score", main="Scatter Plot", col="blue",
+     lwd=2)
+
+plot(x = med[ ,4], y = med[,7], xlab="Distress", ylab="Anxiety Level", main="Scatter Plot", col="blue",
+     lwd=2)
+
+# Scatter Plots between the variables 
+plot(x = med[ ,2], y = med[,3], xlab="Years of Study", ylab="Hours of Studying", main="Scatter Plot", col="blue",
+     lwd=2)
+
+
+plot(x = med[ ,5], y = med[,7], xlab="Job Satisfaction", ylab="Anxiety Level", main="Scatter Plot", col="blue",
+     lwd=2)
+```
+
+**e) Barplot **
+
+Unlike panel data, our qualitative data has a binary variable, and a barplot works best to show the difference in distribution between the two groups. We can see that the observations on 0 are significantly more than those on 1, which makes 0 as our reference group.
+
+```{r}
+counts <- table(med$distress)
+barplot(counts, main="Bar Plot: Distress (Binary)", xlab="Distress", col=c("skyblue4"))
+```
+
+**f) Statistical Summaries **
+
+These are the 5-number summary of each variable. Notable are the summaries of our binary response variable, which indicate whether variable between 0 and 1 of our data leans more heavily toward. As the mean is 0.22, which is less than 0.5, we can conclude that our data is biased towards 0 rather than 1.
+
+```{r}
+summary(med)
+```
+
+## 3. Fit the three models below, and identify which model is your preferred one and why. Make sure to include relevant plots, statistical diagnostics, etc., to support your conclusion, and to comment on your findings. ##
+
+We have fitted our data to the linear probability, probit, and logit models. To determine which model is superior, we set our threshold at 0.5 and predict it to finally determine the accuracy of each model. The probit model yielded statistically significant coefficients for "hoursofstudying" and "anxiety," while the logit model yielded similar results. Age, year, jstatisfaction, and motivscore crosses positive and negative values for the confidence interval which indicates a problem. If a confidence interval for a variable includes both negative and positive values, it means that we cannot confidently say whether the true value of the coefficient is positive or negative based on the available data.
+
+The AIC and residual deviance values for the probit model were somewhat higher; nevertheless, based on the accuracy results for each model: linear probability (0.7742664) < probit (0.785553) M logit (0.7900677), we may conclude that logit is the preferred model with the highest accuracy rate.
+
+**Linear Probability Model**
+
+Treat the values in the estimates column as marginal effects because it is a linear model in context of probabilities.Year, hoursofstudy, and motivscore exhibit a negative relationship with probability of participant being in distress, while age, jsatisfaction, and anxiety exhibit a positive relationship. Anxiety is a significant variable and is the strongest predictor of distress.
+
+```{R}
+ols.mod = lm(distress~.,data=med)
+summary(ols.mod)
+
+# Confidence Interval 
+confint(ols.mod)
+
+# Threshold as 0.5 
+ols.pred.classes <- ifelse(fitted(ols.mod) > 0.5, 1, 0)
+
+# Table: 677 observations on (0,0) & 9 observations on (1,1)
+table(ols.pred.classes, med$distress)
+
+# Accuracy = 0.7742664
+mean(ols.pred.classes == med$distress)
+
+# Plot
+ols.mod2 = lm(distress ~ anxiety, data=med)
+x = seq(20, 100, 5)
+yhat = predict(ols.mod2, list(anxiety=x), type = "response", se.fit = TRUE)
+plot(med$anxiety, med$distress, pch=20,  xlab="Anxiety", ylab="Distress", main="Probit Model")
+lines(x, yhat$fit, lwd=2, col ="red")
+```
+
+**Probit Model**
+
+Only the independent variables "hoursofstudying", and "anxiety" have statistically significant coefficient. "hoursofstudying" has a negative coefficients, indicating a negative relationship with the probability of distress. "Anxiety" has a positive coefficient, indicating that as anxiety increases, the probability of distress also increases.The null deviance represents the difference between the deviance of the null model (which only includes the intercept) and the deviance of the fitted model. The residual deviance represents the difference between the deviance of the fitted model and the deviance of the saturated model. We can use AIC to compare with the Logit function later. The number of Fisher Scoring iterations is the number of iterations required to estimate the coefficients using a maximum likelihood estimation method, which in our case is 4.
+
+```{R}
+probit.mod = glm(distress~.,family=binomial(link="probit"),
+                 data=med)
+summary(probit.mod)
+
+# Confidence Interval
+confint(probit.mod)
+
+# Threshold as 0.5 
+probit.pred.classes <- ifelse(fitted(probit.mod) > 0.5, 1, 0)
+
+# Table: 672 observations on (0,0) & 24 observations on (1,1)
+table(probit.pred.classes, med$distress)
+
+# Accuracy = 0.785553
+mean(probit.pred.classes == med$distress)
+
+# Plot
+probit.mod2 = glm(distress ~ anxiety, family=binomial(link="probit"), data=med)
+x = seq(20, 100, 5)
+yhat = predict(probit.mod2, list(anxiety=x), type = "response", se.fit = TRUE)
+plot(med$anxiety, med$distress, pch=20,  xlab="Anxiety", ylab="Distress", main="Probit Model")
+lines(x, yhat$fit, lwd=2, col ="red")
+
+```
+
+**Logit Model**
+
+"Anxiety” and “hoursofstudy” are still significant. The AIC also slightly increased from the probit model which indicates a favorability of the probit function since AIC is goodness of fit measurement and the lower number is preferable. A lower null deviance is also preferable. Residual deviance is a measure of how well the model fits the data, with a lower value indicating a better fit. Therefore, probit slightly does better in this regard as well. The number of Fisher Scoring iterations is the number of iterations required to estimate the coefficients using a maximum likelihood estimation method, which in our case is 4.
+
+```{R}
+logit.mod = glm(distress~.,family=binomial(link="logit"),
+                 data=med)
+summary(logit.mod)
+
+# Confidence Interval
+confint(logit.mod)
+
+# Threshold as 0.5 
+logit.pred.classes <- ifelse(fitted(logit.mod) > 0.5, 1, 0)
+
+# Table: 672 observations on (0,0) & 28 observations on (1,1)
+table(logit.pred.classes, med$distress)
+
+# Accuracy = 0.7900677
+mean(logit.pred.classes == med$distress)
+
+# Plot
+logit.mod2 = glm(distress ~ anxiety, family=binomial(link="logit"), data=med)
+summary(logit.mod2)
+x = seq(20, 100, 5)
+yhat = predict(logit.mod2, list(anxiety = x), type = "response", se.fit = TRUE)
+plot(med$anxiety, med$distress, pch=20, xlab="Anxiety", ylab="Distress", main="Logit Model")
+lines(x, yhat$fit,lwd=6, col ="red")
+
+# (For further trial) Training & Test 
+inTraining <- createDataPartition(med$distress, p = .75, list = FALSE)
+training <- med[ inTraining,]
+testing  <- med[-inTraining,]
+train_control <- trainControl(method = "cv",
+                              number = 5)
+logit_model <- train(as.factor(distress) ~ .,
+                           data = training,
+                           method = "glm",
+                           family = "binomial",
+                           trControl = train_control)
+
+# Predict (probabilities) using the testing data
+pred_coke = predict(logit_model, newdata = testing)
+
+# Evaluate performance - Accuracy also seems high enough to be utilized 
+confusionMatrix(data=pred_coke, reference=as.factor(testing$distress))
+```
+
+## 4. Using your preferred model, make 4 different predictions, and comment on their reliability. ##
+
+**Case 1) Predict the probabilities of distress with a 25 year old in their first year of medical school vs. 25 year in their 4th year medical school both with median values for other variables (25 hours of studying, 107 of jsatisfaction, 23 motivscore, 43 anxiety)**
+
+The probability that 25 year old in their first year has distress is 21.4% while for 25 year olds in their 4th year it’s 20.3%. This suggests a slight higher likelihood of distress for older individuals in their 1st year than older individuals in their 4th year (just to note, age 25 is above the 3rd quartile and so considered “older individual”)
+
+```{R}
+if1 <- data.frame(age=c(25), year=c(1,4), hoursofstudying=c(25), jsatisfaction=c(107), motivscore=c(23), 
+                  anxiety=c(43))
+predict(logit.mod, if1, type= "response", se.fit= TRUE)
+```
+
+**Case 2) Predict the probabilities of distress with a 30 year old with high motivscore (27) vs. 22 year old with low motivscore(10). Both with median values for other variables (3rd year of med school, 25 hours of studying, 107 of jsatisfaction, 43 anxiety)**
+
+The probability that a 30-year-old with high motivation is 21.1% while for 22 year olds with low motivation is 21.2%. This suggests almost the same likelihood of distress for highly motivated older individuals in medschool and young lowly motivated individuals.
+
+```{R}
+if2 <- data.frame(age=c(30,22), motivscore=c(27, 10), year=c(3), hoursofstudying=c(25), 
+                  jsatisfaction=c(107), 
+                  anxiety=c(43))
+predict(logit.mod, if2, type= "response", se.fit= TRUE)
+```
+
+**Case 3) Predict the probabilities of distress with a 24 year old with high hours of studying (36) and low job satisfaction (101) vs. 24 year old with low hours of studying (12) and high job satisfaction(113) both with median values for the other variables (3rd year of med school, motive score of 23, 43 for anxiety score)**
+
+The probability of a 24 year old with high hours of studying and low job satisfaction is 16.7% and for a 24 year old with low hours of studying and high job satisfaction is 25.4%. This indicates a higher likelihood of distress in medschool if an individual is older, studies less, but a high job satisfaction.
+
+```{r}
+if3 <- data.frame(age=c(24), hoursofstudying=c(36,12), 
+                  jsatisfaction=c(101,113), year=c(3), 
+                  motivscore=c(23), anxiety=c(43))
+predict(logit.mod, if3, type= "response", se.fit= TRUE)
+```
+
+**Case 4) Predict the probabilities of distress with a low anxiety(34) and high motivscore (20) vs. high anxiety(51) and high motivscore(27), both having median values for other variables (22 year old, 3rd year of med school, 25 hours of studying, 107 of jsatisfaction)**
+
+The probability of distress of someone with low anxiety(34) and high motivscore (20) is 12.5% while an individual with high anxiety(51) and high motivscore(27) is 29.4%. This shows that despite a high motivation, because anxiety score is such a significant predictor of distress, they will have a higher chance of distress than an individual with low motivation.
+
+```{r}
+if4 <- data.frame(anxiety=c(34,51), motivscore=c(20,27), age=c(22), year=c(3), hoursofstudying=c(25), 
+                  jsatisfaction=c(107))
+predict(logit.mod, if4, type= "response", se.fit= TRUE)
+```
+

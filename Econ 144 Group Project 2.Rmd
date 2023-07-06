@@ -1,0 +1,373 @@
+---
+title: 'Econ 144 Group Project #2'
+author: 
+- "Jeonseo Lee (UID:604-788-672),"
+- "Ernesto Huerta (UID: 205-741-227)"
+date: "2023-02-24"
+output:
+  pdf_document:
+    toc: yes
+    toc_depth: 2
+  word_document:
+    toc: yes
+    toc_depth: '2'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(ggplot2)
+library(forecast)
+library(vars)
+library(corrr)
+library(corrplot)
+library(car)
+library(AER)
+library(broom)
+library(PoEdata)
+library(leaps)
+library(tidyverse)
+library(caret)
+library(MASS)
+library(dynlm)
+```
+
+# I. (5%) Introduction (describe the data, provide some background on the topic, etc.). #
+
+The two datasets used in this project are the "10-Year Real Interest Rate" conducted by Federal Reserve Bank of Cleveland and "Wilshire 5000 Full Cap Price Index" conducted by Wilshire Associates. We've chosen the real interest rate and the Wilshire stock price as our two time-series variables in order to see the likelihood of their patterns overlapping and to identify any causal relationship between them. To clearly exhibit their cycles, we have set the time range of each monthly sample broadly to 23 years (years 2000 - 2023). Both data are extracted from the Fred website without any seasonal adjustments, so we can experiment with arranging them in our own codes below. Prior to further investigating through the steps, we have an intuition that the stock price index is adjusting to changes in interest rates, as higher interest rates could result in a fall in the general stock price and vice versa. This may be a crucial topic that we could address in this project.
+
+# II. (80%) Results #
+
+```{r}
+# Real Interest rate
+Data1 = read.csv("REAINTRATREARAT10Y.csv")
+colnames(Data1) = c("Date", "Interest Rate")
+ir = ts(Data1[, 2], start=c(2000,1), end=c(2023,1), frequency=12)
+
+# Wilshire Stock Price 
+Data2 = read.csv("WILL5000PRFC.csv")
+colnames(Data2) = c("Date", "Stock_Price")
+sp = ts(Data2[, 2], start=c(2000,1), end=c(2023,1), frequency=12)
+```
+
+**(a) Produce a time-series plot of your data including the respective ACF and PACF plots.**
+
+```{R}
+# Real Interest Rate 
+tsdisplay(ir, main="Interest Rate", lag.max=15)
+
+# Wilshire Stock Price
+tsdisplay(sp, main="Wilshire Stock Price", lag.max=15)
+```
+
+**(b) Plot the stl decomposition plot of your data, and discuss the results.**
+
+Through the decomposition of the real interest rate, we discovered that the rate has a quadratic (or linear) decreasing trend as well as a strong signal of cycles left, which we will further analyze by employing an ARMA model. As we anticipate seasonality may not be constant over time, we have set the s.window to a small value such as 7 for seasonality. There may not be a strong indication of seasonality, as it appears to remain constant over time.
+
+We see similar results for the decompostion ofthe Wilshire stock price. All components appear to be significant with the trend being best represented by an increasing quadratic. Seasonality is present and there is a patern in the random component, indicating the exitence of cycles.
+
+```{R}
+# Real Interest Rate
+decmp <- stl(ir, s.window = 7)
+autoplot(decmp, main = "Interest Rate Decomposition")
+
+# Wilshire Stock Price
+decmp2 <- stl(sp, s.window = 7)
+autoplot(decmp2, main = "Wilshire Stock Price Decomposition")
+```
+
+**(c) Fit a model that includes, trend, seasonality and cyclical components. Make sure to discuss your model in detail.**
+
+For both series we've fitted the trend with a quadratic model. Then, by using tslm, we incorporated seasonal components as well. However, as can be seen in the decomposition plot, there are still cycles remaining after it is seasonally adjusted. Thus, we finally added the cycles (residuals) from the previous decomposition plot. Even though we fit closely to the model, there are still some cycles left that must be taken care of ARMA model.
+
+From the tsdisplay, we observed that both series are exhibiting the ACF and PACF plots of the AR(1) model. Then after applying Arima(1,0,0), we saw a significant spike at lag 2, prompting us to use the AR(2) model as a last step. 
+
+```{r}
+# Real Interest Rate #
+t = seq(2000, 2023,length=length(ir))
+
+# Fit a quadrtaic trend model
+t2<-t^2
+m1=lm(ir~t+t2)
+plot(ir,ylab="Log (Sales)", xlab="Time", lwd=2, col='skyblue3', xlim=c(2000,2023))
+lines(t,m1$fit,col="red3",lwd=2)
+
+# Fit a quadrtaic trend + seasonality model 
+# (Doesn't seem like there's a strong sesonal factor - since all of the coefficients are the same)
+m2=tslm(ir~0+t+t2+season)
+summary(m2)
+plot(ir,ylab="Interest Rate", xlab="Time", lwd=2, col='skyblue3')
+lines(fitted(m2),col="red3",lwd=2,lty=2)
+
+# Fit a quadrtaic trend + seasonality + cycle model
+dcmp_a10 = decompose(ts(ir,frequency=12))
+trend = dcmp_a10$trend
+seasonal = dcmp_a10$seasonal
+cycle = dcmp_a10$random
+m3 = tslm(ir~trend+seasonal+cycle)
+plot(m3$fitted.values, ylab="Interest Rate", xlab="Time", lwd=2, col="skyblue3")
+lines(t, ir, col="red")
+
+# Apply tsdisplay() to see if any significant spikes are left in the residuals
+tsdisplay(m2$residuals, main="Residuals")
+
+# Fit a model with AR(1) with seasonal adjustment 
+m4=arima(ir,order=c(1,1,0),seasonal=list(order=c(1, 0, 0)))
+plot(ir, ylab="Interest Rate", xlab="Time", lwd=2, col="skyblue3")
+lines(fitted(m4),col="black")
+
+# Tsdisplay shows a spike in lag2 --> change AR(1) to AR(2) model 
+tsdisplay(m4$residuals, main="Residuals")  
+
+# Finalized Model: Trend + Seasonality + Cycles 
+# We have put AR(2) model to take care of the cycles. 
+# And, seems like the seasonality seems to affect very minimally.
+m5=Arima(ir, order=c(2,1,0), seasonal=list(order=c(1, 0, 0)), 
+         method="CSS") 
+plot(ir, ylab="Interest Rate", xlab="Time", lwd=2, col="skyblue3")
+lines(fitted(m5),col="red")
+```
+
+```{R}
+## Wilshire Stock Price ##
+t_w = seq(2000, 2023,length=length(sp))
+
+# Fit a quadrtaic trend model
+t2w<-t_w^2
+m1_w=lm(sp~t_w+t2w)
+plot(sp,ylab="Price", xlab="Time", lwd=2, col='skyblue3', xlim=c(2000,2023))
+lines(t_w,m1_w$fitted.values,col="red3",lwd=2)
+
+# Fit a quadrtaic trend + seasonality model 
+m2_w=tslm(sp~0+t_w+t2w+season)
+summary(m2_w)
+plot(sp,ylab="Whilshire Price", xlab="Time", lwd=2, col='skyblue3')
+lines(fitted(m2_w),col="red3",lwd=2,lty=2)
+
+# Fit a quadrtaic trend + seasonality + cycle model
+dcmp_w = decompose(ts(sp,frequency=12))
+trend_w = dcmp_w$trend
+seasonal_w = dcmp_w$seasonal
+cycle_w = dcmp_w$random
+m3_w = tslm(sp~trend_w+seasonal_w+cycle_w)
+plot(m3_w$fitted.values, ylab="Wilshire Price", xlab="Time", lwd=2, col="skyblue3")
+lines(t_w, sp, col="red")
+
+# Apply tsdisplay() to see if any significant spikes are left in the residuals
+tsdisplay(m2_w$residuals, main="Residuals") # Results show that an AR(2) would be a good fit
+
+# Fit a model with AR(2) 
+m4_w=arima(sp,order=c(2,1,0),seasonal=list(order=c(0, 0, 0)))
+plot(sp, ylab="Price", xlab="Time", lwd=2, col="skyblue3")
+lines(fitted(m4_w),col="black")
+
+# Finalized Model: Trend + Seasonality + Cycles 
+# We have put AR(2) model to take care of the cycles. 
+m5_w=Arima(sp, order=c(2,1,0), seasonal=list(order=c(1, 0, 0)), 
+         method="CSS") 
+plot(sp, ylab="Wilshire", xlab="Time", lwd=2, col="skyblue3")
+lines(fitted(m5_w),col="red")
+```
+
+**(e) Plot the respective residuals vs. fitted values and discuss your observations.**
+
+It appears to be that there are no longer any distinctive or clear patterns of residuals, which indicates that our model using ARIMA has properly captured the data and implemented a good fit to the data. 
+
+```{R}
+# Real Interest Rate
+plot(m5$fitted, m5$residuals, xlab="Fitted Values", ylab="Residuals", main="Residuals vs. Fitted Values")
+abline(h=0, col="red")
+
+# Wilshire Stock Price
+plot(m5_w$fitted, m5_w$residuals, xlab="Fitted Values", ylab="Residuals", main="Residuals vs. Fitted Values")
+abline(h=0, col="red")
+```
+
+**(f) Plot the ACF and PACF of the respective residuals and interpret the plots.**
+
+There is no longer a specific pattern left in the residuals, reinforcing the fact that our model has captured well all the significant lags in both acf and pacf and the three components, trend, seasonality, and cycle. 
+
+```{R}
+# Real Interest Rate
+tsdisplay(m5$residuals, main="Residuals", lag.max=10)
+acf(m5$residuals, na.action = na.pass, lag.max=10)
+pacf(m5$residuals, na.action = na.pass, lag.max=10)
+
+# Wilshire Price
+tsdisplay(m5_w$residuals, main="Residuals", lag.max=10)
+acf(m5_w$residuals, na.action = na.pass, lag.max=10)
+pacf(m5_w$residuals, na.action = na.pass, lag.max=10)
+```
+
+**(g) Plot the respective CUSUM and interpret the plot.**
+
+It seems like there is no structural break in the interest rate or Wilshire data, as the CUSUM plot lies within the error bands. 
+
+```{R}
+library(strucchange)
+
+#CUSUM for Intrest Rate
+y=recresid(m5$res~1)
+plot(y, pch=16,ylab="Recursive Residuals")
+plot(efp(m5$res~1, type = "Rec-CUSUM"), main = "CUSUM Test: Real Interest Rate")
+
+#CUSUM for Wilshire
+y_w=recresid(m5_w$res~1)
+plot(y_w, pch=16,ylab="Recursive Residuals")
+plot(efp(m5_w$res~1, type = "Rec-CUSUM"), main = "CUSUM Test: Wilshire Stock Price")
+```
+
+**(h) For your model, discuss the associated diagnostic statistics.**
+
+With our real interest rate data, we derived an ARIMA(2,1,0) model with a seasonal AR component (1). The estimations for ar1 are -0.0564, ar2 is -0.1720, and the seasonal ar1 is 0.0999. MAPE and RMSE, which are the useful critera taht will be used to compare different forecasting models later on, are 42.1834 and 0.186992, respectively.
+
+With our real interest rate data, we derived an ARIMA(2,1,0) model with a seasonal AR component (1). The estimations for ar1 are 0.1749, ar2 is  -0.0617, and the seasonal ar1 is 0.0796. MAPE and RMSE, which are the useful critera taht will be used to compare different forecasting models later on, are 2.721861 and 825.2394, respectively.
+
+```{R}
+summary(m5, dianostics = TRUE)
+summary(m5_w, dianostics = TRUE)
+```
+
+**(i) Use your model to forecast 12-steps ahead. Your forecast should include the respective error bands.**
+
+```{r}
+#Forecast for Interest Rate
+fcst1 = forecast(m5, h=12)
+summary(fcst1) # MAPE: 42.1834
+plot(forecast(m5,h=12),shadecols="oldstyle")
+
+#Forecast for Wilshire Stock Price
+fcst2 = forecast(m5_w, h=12)
+summary(fcst2) # MAPE: 2.721861
+plot(forecast(m5_w,h=12),shadecols="oldstyle")
+```
+
+**(j) Compare your forecast from (i) to the 12-steps ahead forecasts from auto.arima model. Which model performs best in terms of MAPE?**
+
+For each series, the original model preforms better in terms of MAPE. The original forecasting model for interest rate has a MAPE of approximately 42, while the auto.arima model has a MAPE of approximately 45. Similarly, the original forecasting model for the Wilshire stock price had a MAPE value of 2.72, whereas the auto.arima model had a value that was somewhat higher at 2.8.
+
+```{r}
+#Auto.arima for Interest Rate
+fit1=auto.arima(ir)
+plot(forecast(fit1,h=12),shadecols="oldstyle")
+summary(fit1) # MAPE: 45.64657
+
+#Auto.arima for Wilshire
+fit2=auto.arima(sp)
+plot(forecast(fit2,h=12),shadecols="oldstyle")
+summary(fit2) # MAPE: 2.803152
+```
+
+**(k) Combine the two forecasts and comment on the MAPE from this forecasts vs., the individual ones.**
+
+Combining the two forecasts into one, we observed that the combined model for both interest rate and stock price lies between the values of the two competing forecasting models. This is further supported by the comparison of MAPE values we performed on the one-year training data-set, which indicates that the combined model has a higher MAPE value than the original forecasting model, indicating that it is a worse forecasting model, but has a lower MAPE value than the ARIMA model, which now asserts that the combined model performs better than the ARIMA model.
+
+```{R}
+library(forecast)
+#Combine Forecast for interest rate
+irf_r <- forecast(m5,h=12)
+irf_a <- forecast(fit1,h=12)
+Combination <- (irf_r[["mean"]] + irf_a[["mean"]])/2
+autoplot(ir) +
+  autolayer(irf_r, series="Regular Forcast", PI=FALSE) +
+  autolayer(irf_a, series="ARIMA Forecast", PI=FALSE) +
+  autolayer(Combination, series="Combination Forecast") +
+  xlab("Time") + ylab("%") +
+  ggtitle("Interest Rate")
+
+# Compare the MAPE values w/ training & test cross-validation
+train <- window(ir, end=c(2022,1))
+h <- length(ir) - length(train)
+Original <- forecast(train, h=h)
+ARIMA <-forecast(auto.arima(train, lambda=0, biasadj=TRUE), h=h)
+Combination <- (Original$mean + ARIMA$mean) / 2
+
+c(
+  ORIGINAL = accuracy(Original, ir)["Test set","MAPE"],
+  ARIMA = accuracy(ARIMA, ir)["Test set","MAPE"],
+  Combination =
+    accuracy(Combination, ir)["Test set","MAPE"]
+  )
+
+#Combine Forecast for Wilshire 
+spf_r <- forecast(m5_w,h=12)
+spf_a <- forecast(fit2,h=12)
+Combination2 <- (spf_r[["mean"]] + spf_a[["mean"]])/2
+autoplot(sp) +
+  autolayer(spf_r, series="Regular Forcast", PI=FALSE) +
+  autolayer(spf_a, series="ARIMA Forecast", PI=FALSE) +
+  autolayer(Combination2, series="Combination Forecast") +
+  xlab("Time") + ylab("%") +
+  ggtitle("Interest Rate")
+
+# Compare the MAPE values w/ training & test cross-validation
+train2 <- window(sp, end=c(2022,1))
+h2 <- length(sp) - length(train2)
+Original2 <- forecast(train2, h=h2)
+ARIMA2 <- forecast(auto.arima(train2, lambda=0, biasadj=TRUE), h=h2)
+Combination2 <- (Original2$mean + ARIMA2$mean) / 2
+
+c(
+  ORIGINAL = accuracy(Original2, ir)["Test set","MAPE"],
+  ARIMA = accuracy(ARIMA2, ir)["Test set","MAPE"],
+  Combination =
+    accuracy(Combination2, ir)["Test set","MAPE"])
+```
+
+**(l) Fit an appropriate VAR model using your two variables. Make sure to show the relevant plots and discuss your results from the fit.**
+
+Using the VARselect() method, we determined that the Var(1) model better describes the relationship between the two variables. Two variables are maximally correlated at lag 1.0, which, for our monthly data, corresponds to a one-month lag.
+
+```{r}
+y = cbind(ir, sp)
+y_tot=data.frame(y)
+
+# VAR suggest that the best model could be VAR(1) model - as sc penalizes for having more parameters 
+VARselect(y_tot, lag.max = 7)
+
+# Var model for Interest Rate & Stock Price
+library(vars)
+y_model = VAR(y_tot,p=1)
+summary(y_model) 
+
+# Plot the ccf to see the correlation between the variables 
+ccf(ir,sp,ylab="Cross-Correlation Function", main = "Inflation Rate & Stock Price CCF")
+ccf(sp,ir,ylab="Cross-Correlation Function", main = "Inflation Rate & Stock Price CCF")
+```
+
+**(m) Compute, plot, and interpret the respective impulse response functions.**
+
+According to the IRF plots respectively, the shock in interest rate appears to have a negative impact on stock prices (First plot). On the other hand, there appears to be no response of the interest rate to a shock in the stock price.
+
+```{r}
+plot(irf(y_model, n.ahead=36, boot = TRUE))
+```
+
+**(n) Perform a Granger-Causality test on your variables and discuss your results from the test.**
+
+The tests suggest that there is a causality present in which interest rate affects stock price, with a p-value less than 0.05. On the other hand, no causality exists from stock price to the interest rate noted with its large p-value.
+
+```{r}
+grangertest(ir ~ sp, order = 1)
+grangertest(sp ~ ir, order = 1)
+```
+
+**(o) Use your VAR model to forecast 12-steps ahead. Your forecast should include the respective error bands. Comment on the differences between the VAR forecast and the other ones obtained using the different methods.**
+
+```{r}
+var.predict = predict(object=y_model, n.ahead=12)
+plot(var.predict, xlim=c(150,300))
+```
+
+# III. (5%) Conclusions and Future Work. #
+
+We were able to learn how to fit datasets into the appropriate models by decomposing the data and manually applying the best-fitting model for each dataset based on its three primary components: trend, seasonality, and cycle. We have seen that the different methods of forecasting can produce outcomes that vary, but only slightly. According to the Granger-Causality test proven by our VAR(1) model for the real interest rate and the Wilshire stock price, our initial intuition that the interest rate influences the stock price was validated as correct. This idea of how interest rate effects macroeconomic setting could be expanded to other future works, such as how changes in interest rates affect household investment or saving. In addition, because of the high inflation caused by the interest rate, we may also speculate on how the unemployment rates in society may be influenced.
+
+# IV. (5%) References (include the source of your data and any other resources). #
+
+Federal Reserve Bank of Cleveland, 10-Year Real Interest Rate [REAINTRATREARAT10Y], retrieved from FRED, Federal Reserve Bank of St. Louis; https://fred.stlouisfed.org/series/REAINTRATREARAT10Y, February 14, 2023.
+
+Wilshire Associates, Wilshire 5000 Full Cap Price Index [WILL5000PRFC], retrieved from FRED, Federal Reserve Bank of St. Louis; https://fred.stlouisfed.org/series/WILL5000PRFC, February 14, 2023.
+
+
+

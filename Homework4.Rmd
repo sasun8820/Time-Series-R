@@ -1,0 +1,469 @@
+---
+title: 'Econ 144 HW #4'
+author: "Jeonseo David Lee (UID: 604-788-672)"
+date: "2023-03-03"
+output:
+  pdf_document:
+    toc: yes
+    toc_depth: 2
+  word_document:
+    toc: yes
+    toc_depth: '2'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(ggplot2)
+library(forecast)
+library(vars)
+library(corrr)
+library(corrplot)
+library(car)
+library(AER)
+library(broom)
+library(PoEdata)
+library(leaps)
+library(tidyverse)
+library(caret)
+library(MASS)
+library(dynlm)
+```
+
+## 1. Problem 11.1 (i.e., Chapter 11, Problem 1) from Textbooka. ##
+
+**Describe your samples. Estimate a VAR for price growth in MSA1 and MSA2. Choose the lag structure optimally. Comment on the estimation results. **
+
+For these questions, I chose two metropolitan statistical areas (MSAs) from my region, California, which comprises Southern California (Los Angeles-Long Beach-Anaheim) and the Bay area (San Francisco-Oakland-Hayward). The Varselect function demonstrates that the VAR(2) model is the optimal model with the lowest value for each of the four criteria (AIC, HQ, BIC, and FPE). As I run the summary of the VAR(2) model to establish the statistical significance of each lag, I have determined that lags 1 and 2 for the Bay Area have statistically significant influence on the Southern California housing price. On the other hand, it does not appear that Southern California's house prices are statistically significant to those of the Bay Area. In terms of their correlation, the two variables have a moderate value of approximately 0.60.
+
+```{R}
+data1 = read.csv("Southernca.csv")
+data2 = read.csv("Bayarea.csv")
+
+sc = ts(data1[,2], start=c(2017,7), end=c(2023,1), frequency=12)
+bay = ts(data2[,2], start=c(2017,7), end=c(2023,1), frequency=12)
+
+y = cbind(sc, bay)
+y_tot=data.frame(y)
+
+# VAR suggest that the best model could be VAR(2) model
+VARselect(y_tot, lag.max = 7)
+
+# Var model for Interest Rate & Stock Price
+library(vars)
+y_model = VAR(y_tot,p=2)
+summary(y_model) 
+# # Plot the ccf to see the correlation between the two variables 
+# ccf(sc, bay, ylab="Cross-Correlation Function", main = "Southern California & Bay Area CCF")
+```
+
+## 2. Problem 11.2 (i.e., Chapter 11, Problem 2) from Textbooka.##
+
+**Assess whether there is Granger-causality between both series. Construct the appropriate statistical tests, choose the size of the test, and explain your decision**
+
+To conduct a valid Granger-Causality test, the lag order must match the optimal number of lags recommended by the Varselect function in the preceding question, which is 2. And, as suggested by the preceding question, there is a causal relationship in which the housing prices in the Bay Area impact on the housing price of Southern California, with a p-value of approximately 0.0002. On the other hand, based on the high p-value, the impact of Southern California housing prices on Bay Area housing prices does not appear to exist, ruling out any possibility of causality.
+
+```{R}
+# Causual impact of Bay Area to Southern California - "Exists"
+grangertest(sc ~ bay, order = 2)
+
+# Causual impact of Southern California to Bay Area - "Does not exist"
+grangertest(bay ~ sc, order = 2)
+```
+
+## 3. Problem 11.3 (i.e., Chapter 11, Problem 3) from Textbooka.##
+
+**Calculate the impulse-response functions. Explain the four functions and discuss your findings. Do you have prior knowledge about the economics of both MSAs? Comment on whether the ordering of the series matters for your results**
+
+The impulse-response functions display a total of four plots: two of the own-Variable Impulse Response, which depicts how each variable influences itself, and two of the Cross-Variable Impulse Response, which depicts how each variable influences the other. Both own-variable IRF graphs reveal that the magnitude of the shock was greatest at the beginning of its progression, and subsequently gradually diminished. Comparatively, the housing price in Southern California has a longer influence on itself than the housing price in the Bay Area. Nonetheless, they are similar in a sense that their effects on themselves are becoming negligible. Then, there are interesting points to consider for these two cross-variable impulsive response functions; shocks in the housing rice of the Bay Area initially have a positive effect on the housing price of Southern California, but after approximately 4-5 months, its effects have a negative feedback effect on the Southern California price. On the other hand, the Southern California housing price shock has a positive effect on the Bay Area housing price. Although I have no prior knowledge of the economics of these two MSAs, we could assume that the shock/change in the Bay Area housing price is more significant to look at because it is producing opposing effects, which have more potential for buyers and investors to consider. In addition, for this IRF function, the order of the series did not matter, as it yielded the same results regardless of the order of the series.
+
+```{r}
+plot(irf(y_model, n.ahead=36, boot = TRUE))
+```
+
+## 4. Problem 7.8 (i.e., Chapter 7, Problem 8) from Textbookc -Hyndman’s book (2nd Ed).##
+
+**a) Why is multiplicative seasonality necessary for this series? **
+
+To decompose the time series, I've retrieved the first column as an univariate time series, which refers to the turnover rate in supermarket and grocery stores. As the decomposition below suggests, the seasonality has its amplitudes changing and increasing over the time, which is why the multiplicative seasonality is needed for this series. 
+
+```{R}
+retaildata <- readxl::read_excel("retail.xlsx", skip=1)
+retail = ts(retaildata[, "A3349335T"], start=c(1982,4), end =c(2013,12), frequency=12)
+dim(retail)<-NULL
+decmp <- stl(retail, s.window=7)
+autoplot(decmp, main = "Interest Rate Decomposition")
+```
+
+**b) Apply Holt-Winters’ multiplicative method to the data. Experiment with making the trend damped.**
+
+```{R}
+fc1 <- hw(retail, h=60, seasonal=c("multiplicative"))
+fc2 <- hw(retail, h=60, damped=TRUE, seasonal=c("multiplicative"))
+autoplot(retail) +
+  autolayer(fc1, series="Holt's method", PI=FALSE) +
+  autolayer(fc2, series="Damped Holt's method", PI=FALSE) +
+  ggtitle("Holt's Multiplicative Methods") + xlab("Year") +
+  ylab("Retail") +
+  guides(colour=guide_legend(title="Forecast"))
+```
+
+**c) Compare the RMSE of the one-step forecasts from the two methods. Which do you prefer?**
+
+The model with ta trend damped gives us higher RMSE value, which claims that the model without it is the preferred model. 
+
+```{r}
+e1 <- tsCV(retail, hw, h=1, seasonal="multiplicative")
+e2 <- tsCV(retail, hw, h = 1, seasonal = "multiplicative", damped = TRUE)
+
+# Compare RMSE:
+mse1 = sqrt(mean(e1^2, na.rm=TRUE))
+mse1 # 27.78792
+mse2 = sqrt(mean(e2^2, na.rm=TRUE))
+mse2 # 28.09277
+```
+
+**d) Check that the residuals from the best method look like white noise.**
+
+Several factors indicate that the residuals are not white noise. Observing the acf plot reveals that there are significant spikes in several lags, indicating that the residuals are still left with a particular pattern. In addition, the low p-value in the Ljung-Box test indicates that the residuals have heteroskedasticity and are therefore not random like white noise.
+
+```{R}
+checkresiduals(fc1)
+tsdisplay(fc1$residuals, main="Non-Damped Trend")
+```
+
+**e) Now find the test set RMSE, while training the model to the end of 2010. Can you beat the seasonal naïve approach from Exercise 8 in Section 3.7?**
+
+With training data up to the year 2010, our chosen model without trend damping has an approximate RMSE of 77. In contrast, the seasonal naïve approach generates an RMSE of 145, which is significantly higher than the RMSE produced by our Holt-Winters model. Hence, our Holt-Winters model may be superior to the seasonal naive model.
+
+```{R}
+train <- window(retail, end=c(2010,12))
+test <- window(retail, start=c(2011, 1))
+h <- length(retail) - length(train)
+
+holt_new = hw(train, h=h, seasonal=c("multiplicative"))
+accuracy(holt_new, test) # RMSE: 77.04807
+
+naive <- snaive(train, h=h) 
+accuracy(naive, test) # RMSE: 145.46662
+```
+
+## 5. Problem 7.9 (i.e., Chapter 7, Problem 9) from Textbookc -Hyndman’s book (2nd Ed).##
+
+**For the same retail data, try an STL decomposition applied to the Box-Cox transformed series, followed by ETS on the seasonally adjusted data. How does that compare with your best previous forecasts on the test set?**
+
+The forecast derived via STL decomposition with Box-Cox transformation and ETS seasonal adjustment appears to differ from the amplitude of our optimal forecasting model derived using Holt-Winters. This is further supported by their RMSE comparison, in which the Holt-Winters model has a significantly smaller RMSE value (approx. 77) than the STL-ETS forecasting model (approx. 133).
+
+```{R}
+box = BoxCox.lambda(train)
+
+stl_ets= train %>% 
+     stlf(method="ets", lambda=BoxCox.lambda(train), h =36) %>% 
+     forecast(h=36, lambda=BoxCox.lambda(train))
+
+autoplot(train, series = "Train") +
+  autolayer(forecast(stl_ets, PI=F), series = "STL-ETS Forecast") +
+  autolayer(test, series = "Test (Holt-Winters)")
+
+rmse = cbind(accuracy(holt_new, test)[2,2], accuracy(stl_ets, test)[2,2]) 
+colnames(rmse) = c("Holt-Winters", "STL-ETS")
+rmse # Holt_Winter's RMSE (77.05) < STL-ETS' RMSE (133.49)
+```
+
+## 6. Problem 7.11 (i.e., Chapter 7, Problem 11) from Textbookc -Hyndman’s book (2nd Ed).##
+
+**a) Make a time plot of your data and describe the main features of the series.**
+
+
+```{R}
+#install.packages("expsmooth")
+library(expsmooth)
+data(visitors)
+autoplot(visitors, main="Australian Short-Term Overseas isitors")
+autoplot(stl(visitors, s.window=7), main="STL Decomposition")
+```
+
+**b) Split your data into a training set and a test set comprising the last two years of available data. Forecast the test set using Holt-Winters’ multiplicative method.**
+
+```{R}
+train_visit = window(visitors, end=c(2003,4))
+test_visit <- window(visitors, start=c(2003, 5))
+h <- length(visitors) - length(train_visit)
+
+hw_visit = hw(train_visit, h=h, seasonal=c("multiplicative"))
+autoplot(hw_visit, main="Australian Visitors: Holt-Winters' Multiplicative Method")
+```
+
+**c) Why is multiplicative seasonality necessary here?**
+
+Due to the fact that, as seen in the original plot, the amplitude of seasonality is gradually increasing over time, with the greatest variations occurring in the years around 2000, a significant rise from the 1980s and 1990s. Thus, we must implement the multiplicative method in order to capture these changing/growing seasonal variations.
+
+**d) Forecast the two-year test set using each of the following methods:**
+
+```{r}
+# i. an ETS model;
+ets_visit = ets(train_visit) 
+ets_visit_fct = forecast(ets_visit, h=24)
+autoplot(ets_visit_fct)
+
+# ii. an additive ETS model applied to a Box-Cox transformed series;
+ets_visit2 = ets(train_visit, additive.only = TRUE)
+ets_visit_fct2 = forecast(ets_visit2, h=24)
+autoplot(ets_visit_fct2)
+
+# iii. a seasonal naïve method;
+naive_visit <- snaive(train_visit, h=24) # RMSE: 109.62545
+autoplot(naive_visit)
+
+# iv. an STL decomposition applied to the Box-Cox transformed data followed by an ETS model
+# applied to the seasonally adjusted (transformed) data.
+box_visit = BoxCox.lambda(train_visit)
+stl_ets_visit = train_visit %>% 
+     stlf(method="ets", lambda=BoxCox.lambda(train_visit), h =24) %>% 
+     forecast(h=24, lambda=BoxCox.lambda(train_visit))
+autoplot(stl_ets_visit)
+```
+
+**e) Which method gives the best forecasts? Does it pass the residual tests?**
+
+Comparing the RMSE of the test sets, an STL-ETS combined model yields the lowest RMSE value of approxmiately 50.1, and it is demonstrated that it passes the residuals tests with a p-value greater than 0.05 and a random pattern of residuals.
+
+```{R}
+accuracy(ets_visit_fct, test_visit) # RMSE: 80.23124
+accuracy(ets_visit_fct2, test_visit) # RMSE: 72.59375
+accuracy(naive_visit, test_visit) # RMSE: 50.30097 
+accuracy(stl_ets_visit, test_visit) # RMSE: 50.14607 --> "Best Model"
+
+# Residual Test for STL_ETS Model 
+checkresiduals(stl_ets_visit)
+```
+
+**f) Compare the same four methods using time series cross-validation with the tsCV() function instead of using a training and test set. Do you come to the same conclusions?**
+
+From the comparison of the RMSE values, my conclusion remains still the same that STL-ETS forecasting model is the optimal with the least RMSE value as 17.49642. 
+
+```{R}
+#install.packages("MAPA")
+library(MAPA)
+
+# 1. ETS) RMSE: 18.52985
+fets <- function(x, h){
+  forecast(ets(x), h = h)
+}
+e1 <- tsCV(visitors, fets, h = 1)
+sqrt(mean(e1^2, na.rm = TRUE))
+
+# 2. ETS-Additive) RMSE: 18.8505
+fets_add <- function(x, h){
+  forecast(ets(x, lambda = BoxCox.lambda(x), additive.only = TRUE), h = h)
+}
+e2 <- tsCV(visitors, fets_add, h = 1)
+sqrt(mean(e2^2, na.rm = TRUE))
+
+# 3. Snaive) RMSE: 32.56941
+sqrt(mean(tsCV(visitors, snaive, h = 1)^2, na.rm = TRUE)) 
+
+# 4. STL-ETS Mode) RMSE: 17.49642
+fstlm <- function(y, h) {
+ forecast(stlm(
+  y, 
+  lambda = BoxCox.lambda(y),
+  s.window = frequency(y) + 1,
+  robust = TRUE,
+  method = "ets"
+ ),
+ h = h)
+}
+sqrt(mean(tsCV(visitors, fstlm, h = 1)^2, 
+          na.rm = TRUE))
+
+# Prior optimal: Holt-Winter) RMSE: 19.62107
+sqrt(mean(tsCV(visitors, hw, h = 1, 
+               seasonal = "multiplicative")^2,na.rm = TRUE)) 
+
+```
+## 7. Problem 8.13 (i.e., Chapter 8, Problem 13) from Textbookc -Hyndman’s book (2nd Ed).##
+
+Choose one of the following seasonal time series: hsales, auscafe, qauselec, qcement, qgas.
+
+**a) Do the data need transforming? If so, find a suitable transformation.**
+
+As the original plot does not appear to be mean-reverting and also lacks a constant variable, I may use the log transformation with the first difference to achieve covariance stationarity.
+
+```{r}
+library(fpp2)
+data(auscafe)
+tsdisplay(auscafe, main="Data: Auscafe")
+```
+
+**b) Are the data stationary? If not, find an appropriate differencing which yields stationary data.**
+
+As stated in the preceding question, the auscafe time series data, which measures the monthly expenditure on eating out in Australia, does not exhibit covariance stationarity because it does not mean-revert nor contain constant variables. I've performed log transformation and first difference to make it a covariance stationarity, and the result indicates that it has now become a covariance stationarity.
+
+```{r}
+aus = diff(log(auscafe))
+autoplot(aus)
+tsdisplay(aus, main="Data: Aus after taken log transformation and first difference")
+```
+
+**c) Identify a couple of ARIMA models that might be useful in describing the time series. Which of your models is the best according to their AIC values?**
+
+From the tsdisplay, we could certinaly discern high seasonality occurring in 12 months, with spikes at lags 12, 24, and 36 for ACF and lags 12, 24 for PACF. The model's structure suggests that it resembles the seasonal-AR model, S-AR (2). To be more precise, I've used the auto-arima function with trace options based on AIC values to find several candidates for the best model for our data, aus. ARIMA(3,0,0)(2,1,2)[12] is among the potential possibilities, with an AIC value as low as -1819.814. However, our best model is ARIMA(3,0,0)(2,1,1)[12], which has the lowest AIC value of =1899.131. As proposed, the optimal model includes S-AR(2) as its one component.
+
+```{r}
+auto.arima(aus, trace = TRUE, ic ="aic")
+# Best model: ARIMA(3,0,0)(2,1,1)[12]
+best_model = auto.arima(aus)
+```
+
+**d) Estimate the parameters of your best model and do diagnostic testing on the residuals. Do the residuals resemble white noise? If not, try to find another ARIMA model which fits better.**
+
+The residuals appear to be normallt distributed with no discernible patterns, which is an indication that they are approaching white noise. Yet, certain spikes in ACF show that the seasonality has not been fully addressed. Thus, we could crank the model up by adding more parameters in its seasonal adjustment. By switching from S-AR(2) to S-AR(3), there appears to be an improvement in the significant lags in ACF, as well as a reduction in RMSE values compared to the previous optimal model.
+
+```{R}
+# Best Model 1
+checkresiduals(best_model)
+
+# Best Model 2
+best_model2 = arima(aus, order=c(3,0,0), seasonal=list(order=c(3,1,1)))
+checkresiduals(best_model2)
+
+# RMSE Comparison
+summary(best_model) # RMSE: 0.02316931
+summary(best_model2) # RMSE: 0.0229153
+```
+
+**e) Forecast the next 24 months of data using your preferred model.**
+
+```{R}
+fcst = forecast(best_model2, h=24)
+autoplot(fcst)
+```
+
+**f) Compare the forecasts obtained using ets().**
+
+Although there is a small difference in the forecast confidence intervals of the ARIMA model and ETS model such that ARIMA model provides slightly bigger intervals, which may give the impression that they are less precise. In general, however, our best ARIMA model closely resembles to the ETS forecasting model.
+
+```{r}
+par(mfrow=c(2,1), mar=c(6,6,2,1), oma=c(0,0,2,0))
+# ets model 
+autoplot(forecast(ets(aus), h=24))
+# best model
+autoplot(fcst)
+```
+
+
+## 8. Problem 8.18 (i.e., Chapter 8, Problem 18) from Textbookc -Hyndman’s book (2nd Ed).##
+
+Before doing this exercise, you will need to install the Quandl package in R using
+
+```{r}
+#install.packages("Quandl")
+library(Quandl)
+```
+
+**a) Select a time series from Quandl. Then copy its short URL and import the data using**
+
+After signing up an account in Quandl, I've downloaded US GDP data.
+
+```{r}
+data <- Quandl("FRED/GDP", api_key="YrbEFWsCdKkKyhYDSdDQ", type="ts")
+```
+
+**b) Plot graphs of the data, and try to identify an appropriate ARIMA model.**
+
+While the initial plot did not appear to be mean-reverting and covariance stationarity, I used the log transformation and first difference to make it covariance stationarity so that it could be used for forecasting purposes. Next, using the auto.arima function, we determined that the optimal ARIMA model for our data is ARIMA(1,1,3)(2,0,0)[4].
+
+```{R}
+tsdisplay(data, main="Initial: US GDP")
+gdp = diff(log(data))
+tsdisplay(gdp, main="Transformed: US GDP")
+best_gdp = auto.arima(gdp) # ARIMA(1,1,3)(2,0,0)[4] 
+```
+
+**c) Do residual diagnostic checking of your ARIMA model. Are the residuals white noise?**
+
+Given the residuals are certainly mean-reverting, normally distributed, and do not possess significant spikes left in any lag, we may be confident that our ARIMA model resembles a white-noise process. Plus, the high p-value in the Ljung-Box test indicates that the residuals do not have heteroskedasticity and are therefore random like white noise.
+
+```{r}
+checkresiduals(best_gdp)
+summary(best_gdp) # RMSE: 0.01244816
+```
+
+**d) Use your chosen ARIMA model to forecast the next four years.**
+
+Considering these time series data are collected quarterly, I have set the h to 16 time periods to forecast 4 years.
+
+```{r}
+autoplot(forecast(best_gdp, h=16))
+```
+
+**e) Now try to identify an appropriate ETS model.**
+
+```{R}
+ets_gdp = ets(gdp)
+summary(ets_gdp)
+```
+
+**f) Do residual diagnostic checking of your ETS model. Are the residuals white noise?**
+
+As indicated by the low p-value of the Ljung-box test, the ETS model still contains autocorrelations between the lags. In addition, there are a few but distinct spikes remaining in the ACF plots, which emphasizes that the ETS model is not strictly a white-noise procedure.
+
+```{R}
+checkresiduals(ets_gdp)
+```
+
+**g) Use your chosen ETS model to forecast the next four years.**
+
+```{r}
+autoplot(forecast(ets_gdp, h=16, model="ZAZ"))
+summary(ets_gdp) # RMSE: 0.01283352
+```
+
+**h) Which of the two models do you prefer?**
+
+Due to its lower AIC and RMSE values, I would favor an ARIMA model over an ETS model for a slight difference. In addition, the ARIMA forecasts captured in the plot are more similar to and reflective of historical data.
+
+## 9. Perform a forecast combinations on a data of your choice using the same models as in 12.4 (2nd Ed) and recreate Figure 12.5 for your data. Comment on the results.## 
+
+For my data, I've chosen the qgas dataset, which measures quarterly Australian gas production. Comparing the MAPE values of the combined model to those of the individual forecasting models ETS, ARIMA, STL, NNAR, and TBATS reveals that the combined model outperforms all but the TBATS model, whose MAPE value is the lowest at 3.3375. Consequently, we may conclude, with a high degree of chance, that combining several forecasting models can produce more optimal results than utilizing each forecasting model separately.
+
+```{R}
+# Quarterly Australian Gas Production 
+my_data = data(qgas)
+qgas = ts(qgas, start=c(1956,1), end=c(2010, 2), frequency=4)
+
+train <- window(qgas, end=c(2006,2))
+h <- length(qgas) - length(train)
+
+ETS <- forecast(ets(train), h=h)
+ARIMA <- forecast(auto.arima(train, lambda=0, biasadj=TRUE),h=h)
+STL <- stlf(train, lambda=0, h=h, biasadj=TRUE)
+NNAR <- forecast(nnetar(train), h=h)
+TBATS <- forecast(tbats(train, biasadj=TRUE), h=h)
+Combination <- (ETS[["mean"]] + ARIMA[["mean"]] +
+  STL[["mean"]] + NNAR[["mean"]] + TBATS[["mean"]])/5
+
+autoplot(qgas) +
+  autolayer(ETS, series="ETS", PI=FALSE) +
+  autolayer(ARIMA, series="ARIMA", PI=FALSE) +
+  autolayer(STL, series="STL", PI=FALSE) +
+  autolayer(NNAR, series="NNAR", PI=FALSE) +
+  autolayer(TBATS, series="TBATS", PI=FALSE) +
+  autolayer(Combination, series="Combination") +
+  xlab("Year") + 
+  ggtitle("Quarterly Australian Gas Production")
+
+c(
+  ETS = accuracy(ETS, qgas)["Test set","MAPE"],
+  ARIMA = accuracy(ARIMA, qgas)["Test set","MAPE"],
+  STL <- accuracy(STL, qgas)["Test set","MAPE"],
+  NNAR <- accuracy(NNAR, qgas)["Test set","MAPE"],
+  TBATS <- accuracy(TBATS, qgas)["Test set","MAPE"],
+  Combination = 
+    accuracy(Combination, qgas)["Test set","MAPE"]) 
+# Combined model is better than almost 
+# all individual modes. 
+
+```
+

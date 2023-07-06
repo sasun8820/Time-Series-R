@@ -1,0 +1,301 @@
+---
+title: 'Econ 144 Homework #3'
+author: "Jeonseo David Lee (UID 604-788-672)"
+date: "2023-02-10"
+output:
+     pdf_document:
+               latex_engine: xelatex 
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(forecast)
+library(dplyr)
+library(vars)
+```
+
+## 1) Problem 6.4 from Textbook a ##
+yt = 0.7 -2εt-1 + 1.35εt-2 + εt
+
+**a) Obtain the theoretical autocorrelation function up to lag 10. **
+Given that it is the MA(2) model, we can theoretically expect the autocorrelation function to exist up to lag2 regardless of how far the lags may be. As calculated below, lag1's acf value is -0.688 and lag2's is 0.1979. Aside from that, every other latency appears to have 0 acf, which is what we supposedly expected.
+
+```{R}
+ma2_acf <-ARMAacf(ar = 0, ma = c(-2, 1.35), lag.max = 10)
+ma2_acf
+```
+
+**b) Now, simulate the process for t = 1, 2, ...,100 and compute the sample autocorrelation function up to lag 10. Comment and compare with your results in a. **
+
+The result was a bit different in a sense that the sample autocorrelogram does not include lag 2 as a statistically significant lag; in addition, all lags other than lag 1 and lag 2 are not precisely 0 as previously computed in the theoretical model.
+```{R}
+# Simulate --> Thetas? 
+simulate <-arima.sim(model=list(ma=c(-2,1.35)),n=100, mean=0.7)
+ma2_acf2 <- acf(simulate, lag.max=10)
+plot(ma2_acf2)
+tsdisplay(simulate, main="Theoretical Model")
+```
+
+## 2) Problem 6.5 from Textbook a ##
+
+**a) Estimate an MA(2) process with the artificial data generated in exercise 4. Comment on the differences with the theoretical model.** 
+
+The new estimates of the artificial MA(2) model, including theta1, theta2, and the intercept, follow the same trend of decline compared to the originial values.
+```{R}
+library(forecast)
+msft_ma <- Arima(simulate, order = c(0, 0, 2))
+msft_ma 
+```
+
+**b) Compute the 1, 2, and 3-step ahead forecasts. Your information set contains information up to time t. It may be useful to know that εt = 0.4, εt-1 = -1.2**
+
+The 3-step estimates from the dataset with lags of up to 100 periods are displayed below. Estimates have demonstrated a mean-reverting trend as a covariance stationarity  in which each lag oscillated above and below zero and, as lags increase, approaches to zero.
+
+```{r}
+fc = forecast(msft_ma, n.ahead=3)
+fc
+plot(fc, xlab="Lags")
+```
+
+## 3) Problem 6.6 from Textbook a ##
+
+1) yt = 1.2 + 0.8εt-1 + εt
+2) yt = 1.2 + 1.25εt-1+ εt
+
+Both forms of the MA(1) process equations contain error delays with regard to the y variable. However, only the first equation may be used for forecasting because of its invertibility to an AR model that can be used for forecasting, which results from its theta (0.8) being less than 1. If theta grows bigger than 1, autoregressive lags do not approach 0 as the number of lags increases. In addition, since the purpose of transforming it to an AR model is to make the present (Yt) a function of the past, having the most recent past with the most weight. Therefore, the second model cannot be transformed to AR and cannot be used for forecasting. As they are both MA(1) models, regardless of whether their theta is greater than 1 or not, they both exhibit mean-reverting shape, with the second model exhibiting higher persistence.
+
+```{R}
+eq1 = arima.sim(model=list(ma=c(0.8)),n=100, mean=1.2)
+autoplot(eq1)
+
+eq2 = arima.sim(model=list(ma=c(1.25)),n=100, mean=1.2)
+autoplot(eq2)
+```
+
+## 4) Problem 6.10 from Textbook a ##
+
+I chose Tesla's stock price (derived from the Yahoo Finance) from the past 5 years. As the overall shape suggests, it does not appear to have either covaraince stationarity or mean-reverting trend, which puts it as a high candidacy for AR model rather than MA model. As predicted from tsdisplay(), it shows a gradually declining trend in ACF and a strong spike at lag 1 which places it as an AR(1) model. I created the theoretical model by adding mean and the coefficient for lag 1 as the same value as lag1 PACF, since it's an AR(1) model.
+
+```{r}
+tesla_data = read.csv("TSLA.csv")
+tesla = ts(tesla_data[,2], start=c(2018, 2), end=c(2023,2), frequency=12)
+autoplot(tesla, main="Tesla Stock Price")
+tsdis = tsdisplay(tesla, main="Tesla Stock Price")
+
+# ACF Values 
+myacf = acf(tesla, lag.max=10, plot=F)
+myacf$acf
+
+# Financial Returns 
+returns = diff(log(tesla))
+tsdisplay(returns, main="Tesla Stock Returns")
+
+# Estimates: yt = mean + Alpha*yt-1 + error 
+# mean: 136.6036 
+mean(tesla)
+
+# Alpha (pacf value at lag 1)
+# alpha: 0.954
+pacf(tesla, lag.max=10, plot=F, na.action = na.pass)
+
+# Theoretical Model: yt = 136.6036 + 0.954*yt-1 
+
+# Estimate a Model 
+estim <-arima.sim(model=list(ar=c(0.954)),n=100, mean=136)
+estim_ar = Arima(estim, order = c(1, 0, 0), include.mean=TRUE)
+estim_ar
+
+# Forecast
+tes_fc = tesla %>% 
+     Arima(order=c(1,0,0)) %>% 
+     forecast(h=20) %>% 
+     autoplot(main="20-Months Forecast: AR(1)") 
+tes_fc
+
+tes_fc = tesla %>% 
+     Arima(order=c(1,0,0)) %>% 
+     forecast(h=10) %>% 
+     autoplot(main="10-Months Forecast: AR(1)")
+tes_fc
+?stl
+```
+
+## 5) Problem 7.2 from Textbook a ## 
+
+The lack of mean-reversion shape in the graph of the number of unemployed from 1989 to 2002 supports the notion that this is an AR process and not an MA model. Then, it becomes more apparent that its acf shape is generally declining, whereas its pacf shape has a significant spike in its lag 1; this indicates that the data is essentially an AR(1) model. In addition, the AR process is a good fit for describing the dependence of the series since it treats the present as a function of the past, giving higher weight to more recent lags.
+
+```{R}
+uemp_data = read.csv("UNEMPLOY.csv")
+ts_unemp = ts(uemp_data[,2], start=c(1989), end=c(2002), frequency=12)
+tsdisplay(ts_unemp, lag.max=10, main="Unemployment (1989-2002)") # AR(1) Model
+acf(ts_unemp, plot=FALSE)
+```
+
+## 6) Problem 7.5 from Textbook a ##
+
+They both appear to be AR(2) models. Nevertheless, the coefficients of the lags must meet some limitations in order to become AR(2) and have forecasting capabilities. Without meeting these conditions, θ1+θ2<1, θ2-θ1 < 1, the denominator form of the mean for the AR(2) process approaches infinity, so interfering with its covariance stationarity.
+
+First Equation: failing to meet the first requirement (Without stationarity, can't proceed with tsdisplay)
+Second Equation: AR(2) model with stationary covariance
+
+```{R}
+# Error shows up that it is not stationary 
+#First_Equation = arima.sim(model=list(ar=c(0.3, 0.7)),n=100, mean=1)
+
+Second_Equation = arima.sim(model=list(ar=c(-0.3, -0.7)),n=100, mean=1)
+tsdisplay(Second_Equation, main="Second Equation")
+# AR(2) model - as the signs are negative, there has shown a high persistence throughout the lags in acf. Only strong spike at lag 2 that suggests its AR(2) model.
+```
+
+## 7) Problem 7.6 from Textbook a ## 
+
+I had retrieved food and medical care services components from the CPI. The data driving the food CPI components from 2012 to 2022 (annually) closely approaches an AR(1) model. However, its estimated inflation rate more closely resembles the AR(3) model based on the simple appearance of its acf and pacf. This also implies that the inflation rate has an impact on a quarterly basis, as three months are equivalent to one quarter. However, using the auto.arima function revealed that the food cpi data inflation rate is actually a more complex model, AR(1)XMA(1) with a seasonal MA(2), which does not necessarily refer to the AR(2) model.
+
+```{R}
+#### 1). Food ####
+cpi_food = read.csv("cpifood.csv")
+colnames(cpi_food) = c("Date", "CPI")
+View(cpi_food)
+ts.food = ts(cpi_food[ , c("CPI")], start=c(2012), end=c(2022), frequency=12)
+tsdisplay(ts.food, lag.max=10, main="CPI Times Series") # AR(1) Process-Looking 
+
+# Inflation of Food CPI 
+library(dplyr)
+library(tidyverse)
+lag <- stats::lag
+inf.food = ((ts.food - lag(ts.food))/lag(ts.food))*100
+tsdisplay(inf.food, lag.max=10, main="Inflation: Food") # AR(3) model 
+auto.arima(inf.food) # AR(1) X MA(1)model with seasonal MA(2)
+```
+
+I also computed the CPI and inflation rate for medical care services. Similar to the food cpi, the medical care services cpi follows the AR(1) model. However, its inflation rate is difficult to interpret due to the fact that it exhibits both MA and AR model features. I am arguing it for MA(1) or MA(6) model features, with pacf generally decreasing (smoothing out) and big spikes of acf at lag 1 and 6, indicating that it may not be an AR(2) model. It also has a mean-reverting shape, however this cannot be  confirmed with certainty based on its chosen time scale. And, according to the atuo.arima file, it is an MA(1) model with an AR(2) seasonal process.
+
+```{R}
+#### 2). Medical Care Services ####
+cpi_med = read.csv("cpimedicalcare.csv")
+colnames(cpi_med) = c("Date", "CPI")
+ts_med = ts(cpi_med[ , c("CPI")], start=c(2012), end=c(2022), frequency=12)
+tsdisplay(ts_med, lag.max=10, main="CPI Times Series") # AR(1) Process-Looking 
+
+# Inflation of Food CPI 
+inf_med = ((ts_med - lag(ts_med))/lag(ts_med))*100
+tsdisplay(inf_med, lag.max=10, main="Inflation: Medical Care Services") # MA(1) model 
+auto.arima(inf_med) # AR(1) X MA(1)model with seasonal MA(2)
+```
+
+## 8) Problem 7.8 from Textbook a ##
+
+The inflation rates of both the general CPI and the CPI excluding food and gas resemble the AR(2) model, with sharp spikes in pacf at Lags 1 and 2 and a downward trend in acf. As its RMSE and AIC are bigger than the inflation rate excluding food and gas, it appears harder to predict inflation rates including all sectors. In addition, a greater number of observations appear to be falling within the predicted line and having less volatility for the inflation rate excluding food and gas, which supports the above argument
+
+```{R}
+#### CPI All ####
+cpi_all = read.csv("allcpi.csv")
+colnames(cpi_all) = c("Date", "CPI")
+ts_all = ts(cpi_all[ , c("CPI")], start=c(2012,1), end=c(2022, 1), frequency=12)
+tsdisplay(ts_all, lag.max=10, main="CPI Times Series") # AR(1) Shape  
+
+inf_all = ((ts_all - lag(ts_all))/lag(ts_all))*100
+tsdisplay(inf_all, lag.max=10, main="Inflation: All") # AR(2) Shape
+#auto.arima(inf_all) # AR(2)XMA(1) - seasonal MA(1)
+
+#### CPI less than Food & Energy ####
+cpi_nofe = read.csv("lessfoodgas.csv")
+colnames(cpi_nofe) = c("Date", "CPI")
+ts_nofe = ts(cpi_nofe[ , c("CPI")], start=c(2012,1), end=c(2022,1), frequency=12)
+tsdisplay(ts_nofe, lag.max=10, main="CPI Times Series") # AR(1) Shape
+
+inf_nofe = ((ts_nofe - lag(ts_nofe))/lag(ts_nofe))*100
+tsdisplay(inf_nofe, lag.max=10, main="Inflation: Without Food and Gas") # AR(2) Shape
+#auto.arima(inf_nofe) # AR(2)XMA(1) - seasonal MA(1)
+
+
+# Predict
+# AR(2) model for inflation rate in general 
+ar_1 <-arima(inf_all, order= c(2,0,0))
+forecast_ar1 = forecast(inf_all, model= ar_1, h=10)
+
+# AR(2) model for inflation rate excluding food & gas 
+ar_2 <-arima(inf_nofe, order= c(2,0,0))
+forecast_ar2 = forecast(inf_nofe, model= ar_2, h=10)
+
+# RMSE 
+accuracy(ar_1)
+accuracy(ar_2)
+
+# AIC
+AIC(ar_1)
+AIC(ar_2)
+
+# Plot
+par(mfrow=c(2,1), mar=c(3,3,2,1), oma=c(0,0,2,0))
+plot(forecast(inf_all, model=ar_1, h=1), type="l", main="1-Step Forecast: All")
+plot(forecast(inf_all, model=ar_1, h=2), type="l", main="1-Step Forecast: All")
+par(mfrow=c(2,1), mar=c(3,3,2,1), oma=c(0,0,2,0))
+plot(forecast(inf_nofe, model=ar_1, h=1), type="l", main="1-Step Forecast: Without Food & Gas")
+plot(forecast(inf_nofe, model=ar_1, h=2), type="l", main="2-Step Forecast: Without Food & Gas")
+
+f1 = forecast(inf_all, model=ar_1, h=1)
+f2 = forecast(inf_all, model=ar_1, h=2)
+f3 = forecast(inf_nofe, model=ar_1, h=1)
+f4 = forecast(inf_nofe, model=ar_1, h=2)
+
+# Density Plot - All
+hist(f1$fitted, 
+     border="black",
+     prob = TRUE,
+     xlab = "temp",
+     main = "1-Step Density Forecast: All")
+lines(density(f1$fitted),
+      lwd = 2,
+      col = "chocolate3")
+
+hist(f2$fitted, 
+     border="black",
+     prob = TRUE,
+     xlab = "temp",
+     main = "2-Step Density Forecast: All")
+lines(density(f2$fitted),
+      lwd = 2,
+      col = "chocolate3")
+
+# Density Plot - All
+hist(f3$fitted, 
+     border="black",
+     prob = TRUE,
+     xlab = "temp",
+     main = "1-Step Density Forecast: Excluding F&G")
+lines(density(f3$fitted),
+      lwd = 2,
+      col = "chocolate3")
+
+hist(f4$fitted, 
+     border="black",
+     prob = TRUE,
+     xlab = "temp",
+     main = "2-Step Density Forecast: Excluding F&G")
+lines(density(f4$fitted),
+      lwd = 2,
+      col = "chocolate3")
+```
+I also used the GARCH model to undertake 1-step and k-step forecasts for our inflation rates in the AR(2) model, which leads to the conclusion that the inflation rate of CPI values for all sectors is more volatile with higher variances and thus harder to predict than the inflation rate excluding food and gas.
+
+```{r}
+library(rugarch)
+require(xts)
+#install.packages("rmgarch")
+#install.packages("bayesforecast")
+library(rmgarch)
+library(bayesforecast)
+
+# CPI All - Density Function
+what = stan_garch(inf_all, order=c(2,0,0), arma=c(2,0), chains=1, xreg=NULL, adapt.delta = 0.9,
+  tree.depth = 10,stepwise = TRUE)
+plot(what, main ="Inflation Rate - All",ylab ="Inflation",xlab= "Days" )
+
+# CPI w/o Food & Gas Inflation Rate - Density Function
+what2 = stan_garch(inf_nofe, order=c(2,0,0), arma=c(2,0), chains=1, xreg=NULL, adapt.delta = 0.9,
+  tree.depth = 10,stepwise = TRUE)
+autoplot(what2,main ="Inflation Rate w/o Food & Gas",ylab ="Inflation",x = "Days" )
+
+```
+

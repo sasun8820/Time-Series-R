@@ -1,0 +1,422 @@
+---
+title: "Econ 104 Group Project 1"
+author: 
+- "Jeonseo Lee (UID:604-788-672)"
+
+- "Rostam Kianian (UID: 605-699-858)"
+- "Kimia Karaminejad ranjbar (UID: 405-427-057)" 
+- "Kwan Lok Mak (UID: 305-789-681)"
+date: "2023-01-25"
+output:
+  pdf_document:
+  html_document:
+    df_print: paged
+    Theme: cerulean
+geometry: margin = 0.75in
+fontsize: 12pt
+---
+
+```{r setup, include=FALSE}
+data <- read.csv("California_Houses.csv")
+head(data, 3)
+# From our original model, we took out two variables, latitude and longtitude (index 8, 9), as they appear to have insufficient quality of data. 
+housing <- data[ , -8:-9]
+dim(housing)
+```
+
+### Q1) ###
+
+Our data contains a total of 12 variables; we chose the median house value as the response variable and the remaining 11 variables as independent variables to determine their effect on the house value. In one graph, we are displaying histograms, fitted lines, correlation plots, and scatterplots. In addition, boxplots and statistical summaries of each variable have been displayed.
+
+```{R}
+library(ggpubr)
+library(backports)
+library(GGally)
+library(ggplot2)
+library(psych)
+
+# Histograms, Fitted Lines, Correlation Plots, and Scatterplots 
+# We've devided our variables into 3 parts to make them more readable. 
+pairs.panels(housing[1:5],
+             smooth=TRUE,
+             scale=FALSE,
+             ellipse=TRUE,
+             method="pearson",
+             jiggle=TRUE,
+             stars =FALSE,
+             hist.col = 4,
+             main = "Columns 1:5")
+pairs.panels(housing[6:9],
+             smooth=TRUE,
+             scale=FALSE,
+             ellipse=TRUE,
+             method="pearson",
+             jiggle=TRUE,
+             stars =TRUE,
+             hist.col = 4,
+             main = "Columns 6:9")
+pairs.panels(housing[10:12],
+             smooth=TRUE,
+             scale=FALSE,
+             ellipse=TRUE,
+             method="pearson",
+             jiggle=TRUE,
+             stars =TRUE,
+             hist.col = 4,
+             main = "Columns 10:12")
+
+# Boxplot of 12 variables - a tool to see which variable has severe outliers to be removed 
+# par(mfrow=c(2,2), mar=c(6,6,2,1), oma=c(0,0,2,0))
+boxplot(housing$Median_House_Value, main = "Boxplot of Mediam House Value", xlab = "Median House Value")
+boxplot(housing$Median_Income, main = "Boxplot of Mediam Income", xlab = "Median Income")
+boxplot(housing$Median_Age, main = "Boxplot of Mediam Age", xlab = "Median Age")
+boxplot(housing$Tot_Rooms, main = "Boxplot of # of Total Rooms", xlab = "Total Rooms")
+boxplot(housing$Tot_Bedrooms, main = "Boxplot of # of Total Bedrooms", xlab = "Total Bedrooms")
+boxplot(housing$Population, main = "Boxplot of Population", xlab = "Population")
+boxplot(housing$Households, main = "Boxplot of Households", xlab = "Households")
+library(dplyr)
+par(mfrow=c(1,1), mar=c(6,6,2,1), oma=c(0,0,2,0))
+Distance <- select(housing, contains("dist"))
+colnames(Distance) <- c("Ocean", "LA", "San Diego", "San Jose", "San Francisco")
+boxplot(Distance, main = "Boxplot of Distance to")
+
+# Correlation Plot
+library(corrplot)
+library(RColorBrewer)
+M = cor(housing)
+corrplot(M, method = 'number',
+         addCoef.col = 1,
+         number.cex = 0.7,
+         tl.cex = 0.7) # colorful number
+
+# Scatter Plot 
+par(mfrow=c(2,2), mar=c(6,6,2,1), oma=c(0,0,2,0))
+plot(housing$Median_Income, housing$Median_House_Value/1000, xlab="Median Income", ylab="Median House $ Thousands")
+#lm(housing$Median_House_Value/1000 ~ housing$Median_Income)
+abline(45.09, 41.79, col="red")
+
+plot(housing$Median_Age, housing$Median_House_Value/1000, xlab="Median Age", ylab="Median House $ Thousands")
+#lm(housing$Median_House_Value/1000 ~ housing$Median_Age)
+abline(179.1199 , 0.9684, col="red")
+
+plot(housing$Tot_Rooms, housing$Median_House_Value/1000, xlab="# of Total Rooms", ylab="Median House $ Thousands")
+#lm(housing$Median_House_Value/1000 ~ housing$Tot_Rooms)
+abline(1.882e+02 , 7.096e-03, col="red")
+
+plot(housing$Tot_Bedrooms, housing$Median_House_Value/1000, xlab="# of Total Bedrooms", ylab="Median House $ Thousands")
+#lm(housing$Median_House_Value/1000 ~ housing$Tot_Bedrooms)
+abline(199.40080, 0.01386, col="red")
+
+par(mfrow=c(2,2), mar=c(6,6,2,1), oma=c(0,0,2,0))
+plot(housing$Population, housing$Median_House_Value/1000, xlab="Population", ylab="Median House $ Thousands")
+#lm(housing$Median_House_Value/1000 ~ housing$Population)
+abline(210.436262, -0.002512, col="red")
+
+plot(housing$Households, housing$Median_House_Value/1000, xlab="Households", ylab="Median House $ Thousands")
+#lm(housing$Median_House_Value/1000 ~ housing$Households)
+abline(196.92858, 0.01987, col="red")
+
+plot(housing$Distance_to_coast, housing$Median_House_Value/1000, xlab="Distance to coast", ylab="Median House $ Thousands")
+#lm(housing$Median_House_Value/1000 ~ housing$Distance_to_coast)
+abline(251.504167, -0.001102 , col="red")
+
+plot(housing$Distance_to_LA, housing$Median_House_Value/1000, xlab="Distance to LA", ylab="Median House $ Thousands")
+#lm(housing$Median_House_Value/1000 ~ housing$Distance_to_LA)
+abline(2.233e+02,-6.087e-05  , col="red")
+
+par(mfrow=c(2,2), mar=c(6,6,2,1), oma=c(0,0,2,0))
+plot(housing$Distance_to_SanDiego, housing$Median_House_Value/1000, xlab="Distance to San Diego", ylab="Median House $ Thousands")
+#lm(housing$Median_House_Value/1000 ~ housing$Distance_to_SanDiego)
+abline(2.215e+02, -3.689e-05  , col="red")
+
+plot(housing$Distance_to_SanJose, housing$Median_House_Value/1000, xlab="Distance to San Jose", ylab="Median House $ Thousands")
+#lm(housing$Median_House_Value/1000 ~ housing$Distance_to_SanJose)
+abline(2.146e+02, -2.210e-05, col="red")
+
+plot(housing$Distance_to_SanFrancisco, housing$Median_House_Value/1000, xlab="Distance to San Francisco", ylab="Median House $ Thousands")
+#lm(housing$Median_House_Value/1000 ~ housing$Distance_to_SanFrancisco)
+abline(2.123e+02 , -1.410e-05  , col="red")
+
+# 5-number summary statistics 
+summary(housing$Median_House_Value)
+summary(housing$Median_Income)
+summary(housing$Median_Age)
+summary(housing$Tot_Rooms)
+summary(housing$Tot_Bedrooms)
+summary(housing$Population)
+summary(housing$Households)
+summary(housing$Distance_to_coast)
+summary(housing$Distance_to_LA)
+summary(housing$Distance_to_SanDiego)
+summary(housing$Distance_to_SanJose)
+summary(housing$Distance_to_SanFrancisco)
+```
+
+### Q2) Multiple Linear Regression (including all variables) & statistical and economic significance of your estimates. Also, make sure to provide an interpretation of your estimates. ###
+
+Except for the variable, "Distance to Sanjose," the majority of the variables appear to be statistically significant.
+One unit increase in the "Median Income" variable will result in a 3.93*10^4 unit rise in the "Median House Value" (our response variable, y). 
+Similarly, a one-unit increase in the "Median Age" variable will boost the median housing value by 9.59*10^2 units.
+However, in case of the variable, "Total Room," which stands for the total number of rooms in a house, its one unit increase will decrease the median housing value by 6.52 units.
+
+```{r}
+#install.packages("dplyr")
+#library(dplyr)
+reg <- lm(Median_House_Value ~ ., data = housing)
+summary(reg)
+```
+
+### Q3) Quantiles and Outliers to be removed ###
+
+Based on the boxplots created in #1, we were able to identify and choose variables with apparent outliers. These six variables weere the ones we chose to exclude outliers: Median Income, Total Number of Rooms, Total Number of Bedrooms, Population, Household, and Distance from the Ocean.
+
+```{r}
+# Median Income
+housing2 <- housing
+Q1 <- quantile(housing$Median_Income, 0.25)
+Q3 <- quantile(housing$Median_Income, 0.75)
+IQR <- IQR(housing$Median_Income)
+
+housing2 <- subset(housing, housing$Median_Income > (Q1-1.5*IQR) & housing$Median_Income < (Q3+1.5*IQR))
+boxplot(housing2$Median_Income, main = "Median Income")
+
+# Total Rooms 
+Q1 <- quantile(housing2$Tot_Rooms, 0.25)
+Q3 <- quantile(housing2$Tot_Rooms, 0.75)
+IQR <- IQR(housing2$Tot_Rooms)
+
+housing2 <- subset(housing2, housing2$Tot_Rooms > (Q1-1.5*IQR) & housing2$Tot_Rooms < (Q3+1.5*IQR))
+boxplot(housing2$Tot_Rooms, main = "# of Total Rooms")
+
+# Total Bedroom 
+Q1 <- quantile(housing2$Tot_Bedrooms, 0.25)
+Q3 <- quantile(housing2$Tot_Bedrooms, 0.75)
+IQR <- IQR(housing2$Tot_Bedrooms)
+
+housing2 <- subset(housing2, housing2$Tot_Bedrooms > (Q1-1.5*IQR) & housing2$Tot_Bedrooms < (Q3+1.5*IQR))
+boxplot(housing2$Tot_Bedrooms, main = "# of Total Bedrooms")
+
+# Population  
+Q1 <- quantile(housing2$Population, 0.25)
+Q3 <- quantile(housing2$Population, 0.75)
+IQR <- IQR(housing2$Population)
+
+housing2 <- subset(housing2, housing2$Population > (Q1-1.5*IQR) & housing2$Population < (Q3+1.5*IQR))
+boxplot(housing2$Population, main = "Population")
+
+# Household  
+Q1 <- quantile(housing2$Households, 0.25)
+Q3 <- quantile(housing2$Households, 0.75)
+IQR <- IQR(housing2$Households)
+
+housing2 <- subset(housing2, housing2$Households > (Q1-1.5*IQR) & housing2$Households < (Q3+1.5*IQR))
+boxplot(housing2$Households, main = "Households")
+
+# Distance to Ocean  
+Q1 <- quantile(housing2$Distance_to_coast, 0.25)
+Q3 <- quantile(housing2$Distance_to_coast, 0.75)
+IQR <- IQR(housing2$Distance_to_coast)
+
+housing2 <- subset(housing2, housing2$Distance_to_coast > (Q1-1.5*IQR) & housing2$Distance_to_coast < (Q3+1.5*IQR))
+boxplot(housing2$Distance_to_coast, main = "Distance_to_coast")
+```
+
+### Q4) Mallows CP & Bortua Algorithm ###
+
+To make the result of Mallows CP more readable, we've set nbest to 1 and were realized that 8 subgroups is the optimal number for our data. Then, using the Boruta Algorithm, we sorted out the variables by their importance and removed the three least important variables: households, total # of rooms, and total # of bedrooms.
+
+```{R}
+#install.packages("leaps")
+library(leaps)
+library(car)
+library(AER)
+library(broom)
+library(PoEdata)
+library(leaps)
+
+# Mallow CP
+mreg.mod5 <- lm(Median_House_Value ~ ., data=housing2)
+ss=regsubsets(Median_House_Value ~ .,method=c("exhaustive"),nbest=1,data=housing2)
+subsets(ss,statistic="cp",legend=F,main="Mallows CP",col="steelblue4")
+
+# Boruta Algorithm
+library(Boruta)
+Bor.res <- Boruta(Median_House_Value ~., data = housing2, doTrace = 2)
+#plot the graph
+plot(Bor.res, xlab = "", xaxt = "n", main="Boruta Algorithm Feature Importance")
+lz<-lapply(1:ncol(Bor.res$ImpHistory),function(i) Bor.res$ImpHistory[is.finite(Bor.res$ImpHistory[,i]),i])
+names(lz) <- colnames(Bor.res$ImpHistory)
+Labels <- sort(sapply(lz,median))
+axis(side = 1,las=2,labels = names(Labels),
+at = 1:ncol(Bor.res$ImpHistory), cex.axis = 0.7)
+boruta_signif <- names(Bor.res$finalDecision[Bor.res$finalDecision %in% c("Confirmed", "Tentative")])
+boruta_signif_Conf <- names(Bor.res$finalDecision[Bor.res$finalDecision %in% c("Confirmed")])
+boruta_signif_Tent <- names(Bor.res$finalDecision[Bor.res$finalDecision %in% c("Tentative")])
+boruta_signif_Reject <- names(Bor.res$finalDecision[Bor.res$finalDecision %in% c("Rejected")])
+print(boruta_signif_Conf)
+print(boruta_signif_Tent)
+print(boruta_signif_Reject)
+# The statistical attributes in terms of variable importance
+attStats(Bor.res)
+# Sort variables by importance
+sorted_vars = attStats(Bor.res)[order(-attStats(Bor.res)$meanImp),]
+print(sorted_vars)
+# Sort variables in a variable
+conf_vars = row.names(sorted_vars[1:5,])
+print(conf_vars)
+# Accoding to the result of Mallows CP and Boruta Algorithm, we take out the three variables: households, total # of rooms, and total # of bedrooms.
+reg.2 <- lm(Median_House_Value ~ Median_Income + Distance_to_coast + Median_Age + Distance_to_SanDiego + Distance_to_SanJose + Distance_to_SanFrancisco + Distance_to_LA + Population, data = housing2)
+summary(reg.2)
+```
+
+### Q5) VIF to test multicollinearity ###
+
+Based on the results of the VIF test, 4 variables have a VIF greater than five: Distance to SanJose (which was initially not statistically significant), Distance to San Francisco, and Distance to LA, and Distance to SanDiego. 
+
+```{R}
+vifcheck <- vif(reg.2)
+vifcheck
+# We remove VIF values more than 5
+temp.housing <- housing[, c("Median_Income","Median_Age","Population","Distance_to_coast")]
+vifcheck.cor <- cor(temp.housing)
+vifcheck.cor
+
+# New Regression Model after VIF Test 
+reg.3 <- lm(Median_House_Value ~ Median_Income + Median_Age + Population + Distance_to_coast, data=housing2)
+summary(reg.3)
+```
+
+### Q6) Plot the respective residuals vs. y^ ###
+
+From the residual plot vs. our predicted, regression model (y^), it is worth noting that the residuals are neither totally random nor perfectly aligned with the value of 0. It even appears to have an increasing range of residuals (according to the spreadlevelplot), which once again accentuates a belief that heteroskedasticity exists in our data.
+
+```{R}
+library(car)
+# Both residual plot against y^ and spreadlevel plot 
+spreadLevelPlot(reg.3)
+plot(reg.3$fitted.values, reg.3$residuals, xlab="Y Hat", ylab="Residuals", main="Residuals vs. Y^")
+abline(h=0, col="red")
+
+# Respective residual plots 
+par(mfrow=c(2,2), mar=c(6,6,2,1), oma=c(0,0,2,0))
+plot(housing2$Median_Income, reg.3$residuals, xlab="Median Income", ylab="Residuals", main="Median Income & Residuals" )
+abline(h=0, col="red")
+
+plot(housing2$Median_Age, reg.3$residuals, xlab="Median Age", ylab="Residuals", main = "Median Age & Residuals")
+abline(h=0, col="red")
+
+plot(housing2$Population, reg.3$residuals, xlab="Population", ylab="Residuals", main = "Population & Residuals")
+abline(h=0, col="red")
+
+plot(housing2$Distance_to_coast, reg.3$residuals, xlab="Distnace to Coast", ylab="Residuals", main="Distance to Coast & Residuals")
+abline(h=0, col="red")
+```
+
+### 7) RESET Test ###
+
+Both reset tests with power of 2 and 3 show extremely low p-values (less than 0.05), indicating that we reject the null hypothesis in the belief that the original model is indeed misspecified and thus requires the additional functional forms.
+
+```{R}
+library(lmtest)
+# Conduct a RESET test with a power of 2 
+resettest(reg.3, data = housing2, power = 2, type = "regressor")
+# Conduct a RESET test with a power of f3
+resettest(Median_House_Value ~ Median_Income + Distance_to_coast + Median_Age + Population, data = housing2, power = 3, type = "regressor")
+```
+
+### 8) Heteroskedasticity ###
+
+To test if there's heteroskedasticity in our model, we can try the following tests: BP, ncv, GQ tests.
+According to the three tests, we confirmed that there is heteroskedaticity, and to mitigate it we conducted GLS to increase R^2 and stabilize standard errors for each variable by reducing them. 
+
+```{r}
+# BP Test - We REJECT the null. As its p-value is so low, there is not constant variance or homoskedaticity. 
+# (However, we can't be sure that there is an increasing pattern of residuals.)
+bptest(reg.3)
+
+# ncv Test - We REJECT the null. 
+ncvTest(reg.3)
+
+# GQ Test 
+gqtest(reg.3, point=0.5, alternative="two.sided", order.by = NULL) # we Fail to reject H0
+```
+
+Now that we are confirmed that there is heteroskedasticity by all three tests, we need to conduct GLS to mitigate it. 
+```{r}
+# Generalized Least Squares 
+# By doing GLS, our R^2 has gone up from 0.4849 to 0.5213, and also all of the variables
+# now have lesser stanard errors. 
+residual <-resid(reg.3)^2
+sighatsq.ols <- lm(log(residual)~log(Median_Income+ Distance_to_coast + Median_Age + Population), data=housing2)
+vari <- exp(fitted(sighatsq.ols))
+gls_new_reg <- lm(Median_House_Value ~ Median_Income + Distance_to_coast + Median_Age + Population, data = housing2, weights = 1/vari)
+summary(gls_new_reg)
+summary(reg.3)
+```
+
+### 9) Interaction Terms & AIC/BIC ###
+
+Through the various models and the results of their AIC and BIC, we added an interaction factor, Median Income * Median Age, to model 1, which is our new selected model.
+
+```{R}
+model1 <-  lm(Median_House_Value ~ Median_Income + Median_Age + Population + Distance_to_coast + Median_Income * Median_Age, data=housing2)
+
+model2 <-  lm(Median_House_Value ~ Median_Income + Median_Age + Population + Distance_to_coast + Median_Income * Population, data=housing2)
+
+model3 <-  lm(Median_House_Value ~ Median_Income + Median_Age + Population + Distance_to_coast + Median_Income * Distance_to_coast, data=housing2)
+
+model4 <-  lm(Median_House_Value ~ Median_Income + Median_Age + Population + Distance_to_coast + Median_Age * Population, data=housing2)
+
+model5 <-  lm(Median_House_Value ~ Median_Income + Median_Age + Population + Distance_to_coast + Median_Age * Distance_to_coast, data=housing2)
+
+model6 <-  lm(Median_House_Value ~ Median_Income + Median_Age + Population + Distance_to_coast + Population * Distance_to_coast, data=housing2)
+
+AIC(reg.3, model1, model2, model3, model4, model5, model6)
+BIC(reg.3, model1, model2, model3, model4, model5, model6)
+```
+
+### 10) Cross-Validation to test if our model properly acts ###
+
+Since our RMSE in training set is higher than that of the test, it is verified that we have fit our data correctly without overfitting. Also, by doing ACF and PACF test of the residual done by cross-validation, it seems reasonable within the blue dashed line (confidence interval for correlation coefficient).
+
+```{R}
+library(PoEdata)
+library(car)
+# Compare Train/Test:
+set.seed(1)
+row.number <- sample(1:nrow(housing2), 0.66*nrow(housing2))
+train = housing2[row.number,]
+test = housing2[-row.number,]
+dim(train)
+dim(test)
+
+
+reg.4 <- lm(Median_House_Value ~ Median_Income + Median_Age + Population + Distance_to_coast + Median_Income * Median_Age, data=train)
+#plot(reg.4)
+
+# Since our RMSE in training set is higher than that of the test, 
+# it is verified that we have fit our data correctly without overfitting. 
+sqrt(mean((train$Median_House_Value - predict(reg.4, train)) ^ 2))
+sqrt(mean((test$Median_House_Value - predict(reg.4, test)) ^ 2))
+
+# Perform a 5-fold CV
+#install.packages("lmvar")
+library(lmvar)
+model1 <-  lm(Median_House_Value ~ Median_Income + Median_Age + Population + Distance_to_coast + Median_Income * Median_Age, data=housing2, x=TRUE, y = TRUE)
+cv.lm(model1, k = 5)
+
+# ACF and PACF of the model done by cross validation 
+library(tseries)
+library(forecast)
+library(fpp3)
+library(tseries)
+library(seasonal)
+library(fable)
+library(stats)
+library(tsibble)
+tsdisplay(reg.4$residuals, main = "Model done by Cross-Validation") 
+```
+
+### 11) Conclusion ###
+
+In this analysis, we sought to observe the strength of our variables in determining the median house price. In the first question, we calculated correlations for each variable and were able to see which variables had the highest absolute value for correlation value. We saw that of all the variables, median income, and distance to the coast were the most important variables in explaining median house price. Overall, we found that our R-squared was 0.6356, meaning that 63.6% of our variability in the outcome data is explained by the model, expressing a moderately strong rsquared. We continued by deleting outliers from some of our regressions in order to better analyze our data and assign our new data set as housing2. According to the result of Mallows CP and Boruta Algorithm, we removed the three least significant variables, we removed total # of rooms, and total # of bedrooms. We then found that four of our variables had a VIF (Variation Inflation Factor) of higher than 5, which indicates the correlation of a certain variable with other variables, known as multicollinearity. Using a reset test, we found that the original form of our regression, Median_House_Value=Median_Income + Distance_to_coast + Median_Age + Population is misspecified due to the existence of a nearly 0 p-value. This indicates that another form of the model should be used. We also received a low p-value when testing for heteroscedasticity, indicating that the variance of our residuals is nonconstant, and in a regression analysis, it will show an unequal scatter of residuals. When we added interaction variables, we noticed that the lowest BIC and AIC were found in Model 1, which is the interaction of variable income and age.
